@@ -508,9 +508,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildViewportContent(scale: TerminalScale): String {
-        val scaleStr = String.format(java.util.Locale.US, "%.4f", scale.scaleFactor)
-        // 始终禁用手势缩放，固定等比缩放比例
-        return "width=${scale.designWidth}, initial-scale=$scaleStr, maximum-scale=$scaleStr, minimum-scale=$scaleStr, user-scalable=no"
+        // WebView 内部以设计宽度 1:1 布局，整体缩放交由视图层 scaleX/scaleY 完成
+        return "width=${scale.designWidth}, user-scalable=no"
     }
 
     private fun updateWebViewZoomSettings() {
@@ -522,21 +521,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 视图层等比缩放：将 WebView 以固定设计分辨率（designWidth × designHeight）渲染整页，
+     * 再把整个 WebView 当作画布按 min(屏宽/设计宽, 屏高/设计高) 等比缩放并居中，
+     * 确保内部布局比例锁定、绝不变形（contain 模式，多余空间为黑边）。
+     */
     private fun applyTerminalScale(reloadPage: Boolean = false) {
-        val scale = computeTerminalScale(binding.webView.width, binding.webView.height)
-        val previous = currentTerminalScale
+        val container = binding.mainRoot
+        val screenW = if (container.width > 0) container.width else resources.displayMetrics.widthPixels
+        val screenH = if (container.height > 0) container.height else resources.displayMetrics.heightPixels
+        val scale = computeTerminalScale(screenW, screenH)
         currentTerminalScale = scale
 
-        binding.webView.setInitialScale(scale.initialScalePercent)
-        updateWebViewZoomSettings()
-
-        if (reloadPage && previous != null) {
-            val scaleDelta = kotlin.math.abs(previous.scaleFactor - scale.scaleFactor)
-            if (scaleDelta > 0.01f && !binding.webView.url.isNullOrEmpty()) {
-                binding.webView.reload()
-                return
-            }
+        val lp = binding.webView.layoutParams as android.widget.FrameLayout.LayoutParams
+        if (lp.width != scale.designWidth || lp.height != scale.designHeight ||
+            lp.gravity != android.view.Gravity.CENTER
+        ) {
+            lp.width = scale.designWidth
+            lp.height = scale.designHeight
+            lp.gravity = android.view.Gravity.CENTER
+            binding.webView.layoutParams = lp
         }
+
+        binding.webView.pivotX = scale.designWidth / 2f
+        binding.webView.pivotY = scale.designHeight / 2f
+        binding.webView.scaleX = scale.scaleFactor
+        binding.webView.scaleY = scale.scaleFactor
+
+        updateWebViewZoomSettings()
 
         if (!binding.webView.url.isNullOrEmpty() && !isErrorState) {
             injectViewportViaJs(scale)
