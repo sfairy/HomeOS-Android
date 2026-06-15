@@ -52,7 +52,7 @@ android {
         val variant = this
         variant.outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            val fileName = "HomeOSAPP-${variant.versionName}.apk"
+            val fileName = "HomeOSAPP+${variant.versionName}.apk"
             output.outputFileName = fileName
         }
     }
