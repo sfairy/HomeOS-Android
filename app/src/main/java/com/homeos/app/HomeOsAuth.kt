@@ -23,7 +23,7 @@ data class HomeOSLoginResult(
 object HomeOSAuth {
     const val KEY_AUTH_TOKEN = "auth_token"  // 认证令牌存储键名
     const val KEY_CSRF_TOKEN = "csrf_token"  // CSRF 令牌存储键名
-    const val APP_USER_AGENT = "HomeOSApp/2026.06.15.07 (Android; Mobile)"  // 应用用户代理
+    const val APP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"  // 桌面版 User-Agent，确保服务端返回桌面布局而非手机版
 
     /**
      * 执行登录请求

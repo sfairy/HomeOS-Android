@@ -473,8 +473,8 @@ class MainActivity : AppCompatActivity() {
      */
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun setupWebView() {
-        // 强制启用最大 GPU 和合成渲染加速
-        binding.webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        // 使用默认图层类型，避免 HARDWARE 层在某些设备上导致渲染异常
+        binding.webView.setLayerType(View.LAYER_TYPE_NONE, null)
 
         binding.webView.settings.apply {
             javaScriptEnabled = true
@@ -485,26 +485,29 @@ class MainActivity : AppCompatActivity() {
             loadsImagesAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             
-            val savedLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
-            val webLang = if (savedLang == "en") "en" else "zh-CN"
-            userAgentString = "${HomeOSAuth.APP_USER_AGENT} Lang/$webLang"
+            // 使用桌面版 User-Agent，确保服务端返回桌面布局（而非手机版页面）
+            userAgentString = HomeOSAuth.APP_USER_AGENT
             
             // 允许自动播放直播流和摄像头画面
             mediaPlaybackRequiresUserGesture = false
             
-            // 在较小屏幕上允许缩放（但实际禁用）
-            builtInZoomControls = false
+            // 启用缩放控件（参考 Fully Kiosk Browser 方案）
+            setSupportZoom(true)
+            builtInZoomControls = true
             displayZoomControls = false
             
-            // 启用视口缩放以支持响应式网页
+            // 启用宽视口 + 概览模式，使页面等比缩放适配屏幕
             useWideViewPort = true
             loadWithOverviewMode = true
             
-            // 启用页面自动缩放，遵循 meta viewport 等比适配屏幕
-            setSupportZoom(true)
+            // 固定文本缩放为 100%，防止系统字体缩放干扰页面布局
+            textZoom = 100
+            
+            // 禁用算法暗化，防止 WebView 强制深色模式导致页面颜色异常
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                isAlgorithmicDarkeningAllowed = false
+            }
         }
-        
-        // 移除 textZoom 固定值和 setInitialScale，让 WebView 根据设备分辨率和 viewport 自动等比缩放
 
         // 注入安全的跨平台桥接对象
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
