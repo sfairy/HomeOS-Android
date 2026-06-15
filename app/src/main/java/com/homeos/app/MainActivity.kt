@@ -512,9 +512,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 等比缩放：WebView 铺满屏幕；实际缩放由 shouldInterceptRequest 注入的
-     * 固定宽度 viewport(width=设计宽度) 配合 loadWithOverviewMode 自动完成。
-     * 此处仅维护缩放状态供 Bridge 读取，并确保 WebView 尺寸正常（防白屏）。
+     * 等比缩放（纯原生 density 补偿）：WebView 铺满屏幕；
+     * 通过 setInitialScale(100/density) 使 1 CSS px = 1 物理像素，
+     * 从而 CSS 视口 = 屏幕物理像素数（本机 = 设计分辨率 3200×2136），页面 1:1 桌面布局铺满。
+     * 不依赖网页 viewport / cookie / 网络注入，必定生效。
      */
     private fun applyTerminalScale(reloadPage: Boolean = false) {
         val container = binding.mainRoot
@@ -532,6 +533,11 @@ class MainActivity : AppCompatActivity() {
         }
         binding.webView.scaleX = 1f
         binding.webView.scaleY = 1f
+
+        // density 补偿：使 CSS 视口宽度 = WebView 物理像素宽度 = 设计分辨率
+        val density = resources.displayMetrics.density
+        val initialScalePercent = Math.round(100f / density).coerceIn(1, 1000)
+        binding.webView.setInitialScale(initialScalePercent)
 
         updateWebViewZoomSettings()
     }
@@ -553,9 +559,10 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
-            // 注入固定宽度视口(=设计宽度) + overview 模式，WebView 自动等比缩放铺满屏幕
-            useWideViewPort = true
-            loadWithOverviewMode = true
+            // 关闭自适应视口：忽略网页自带 viewport，用 WebView 物理宽度作为视口；
+            // 配合 setInitialScale(100/density) 使 CSS 视口 = 物理像素数(=设计分辨率)，1:1 铺满
+            useWideViewPort = false
+            loadWithOverviewMode = false
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
@@ -628,75 +635,6 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
                 return handleUrlRedirection(url)
-            }
-
-            // 拦截主框架 HTML，注入固定宽度 viewport(width=设计宽度)，
-            // 配合 useWideViewPort + loadWithOverviewMode 让页面以设计分辨率视口渲染并等比缩放铺满
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): android.webkit.WebResourceResponse? {
-                if (request?.isForMainFrame != true) return null
-                val url = request.url.toString()
-                if (!url.startsWith("http")) return null
-
-                return try {
-                    val conn = URL(url).openConnection() as HttpURLConnection
-                    conn.requestMethod = "GET"
-                    conn.instanceFollowRedirects = true
-                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-                    conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                    // 禁用压缩，避免拿到 gzip 字节后误当文本解析
-                    conn.setRequestProperty("Accept-Encoding", "identity")
-                    // 关键：HttpOnly 的 auth_token 无法通过 CookieManager.getCookie 读取，
-                    // 改用 SharedPreferences 中保存的 token 手动构建 Cookie 头，确保已认证
-                    val authToken = HomeOSAuth.loadAuthToken(sharedPreferences)
-                    val csrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
-                    val cookieHeader = HomeOSAuth.buildCookieHeader(authToken, csrfToken)
-                    if (cookieHeader.isNotEmpty()) {
-                        conn.setRequestProperty("Cookie", cookieHeader)
-                    }
-                    conn.connectTimeout = 8000
-                    conn.readTimeout = 8000
-                    conn.connect()
-
-                    val contentType = conn.contentType ?: "text/html"
-                    if (!contentType.contains("html", ignoreCase = true)) {
-                        conn.disconnect()
-                        return null
-                    }
-
-                    // 正确解析字符集（contentType 形如 "text/html; charset=utf-8"），默认 UTF-8
-                    val charsetName = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
-                        .find(contentType)?.groupValues?.get(1)?.trim()
-                        ?.takeIf { runCatching { charset(it) }.isSuccess } ?: "UTF-8"
-
-                    val bodyBytes = conn.inputStream.use { it.readBytes() }
-                    var body = String(bodyBytes, charset(charsetName))
-
-                    val (designW, _) = resolveDesignResolution()
-                    val viewportMeta = "<meta name=\"viewport\" content=\"width=$designW\">"
-
-                    if (body.contains("name=\"viewport\"") || body.contains("name='viewport'")) {
-                        body = body.replace(
-                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
-                            viewportMeta
-                        )
-                    } else {
-                        body = body.replace(
-                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
-                        ) { "${it.value}$viewportMeta" }
-                    }
-
-                    android.webkit.WebResourceResponse(
-                        "text/html",
-                        charsetName,
-                        body.byteInputStream(charset(charsetName))
-                    )
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "拦截 HTML 注入 viewport 失败: ${e.message}")
-                    null
-                }
             }
 
             @Deprecated("Deprecated in Java")
