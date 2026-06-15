@@ -504,29 +504,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildViewportMeta(scale: TerminalScale): String {
-        val scaleStr = String.format(java.util.Locale.US, "%.4f", scale.scaleFactor)
-        val userScalable = if (isKioskMode) "no" else "yes"
-        return if (isKioskMode) {
-            """<meta name="viewport" content="width=${scale.designWidth}, initial-scale=$scaleStr, maximum-scale=$scaleStr, minimum-scale=$scaleStr, user-scalable=$userScalable">"""
-        } else {
-            """<meta name="viewport" content="width=${scale.designWidth}, initial-scale=$scaleStr, user-scalable=$userScalable">"""
-        }
+        return """<meta name="viewport" content="${buildViewportContent(scale)}">"""
     }
 
     private fun buildViewportContent(scale: TerminalScale): String {
         val scaleStr = String.format(java.util.Locale.US, "%.4f", scale.scaleFactor)
-        val userScalable = if (isKioskMode) "no" else "yes"
-        return if (isKioskMode) {
-            "width=${scale.designWidth}, initial-scale=$scaleStr, maximum-scale=$scaleStr, minimum-scale=$scaleStr, user-scalable=$userScalable"
-        } else {
-            "width=${scale.designWidth}, initial-scale=$scaleStr, user-scalable=$userScalable"
-        }
+        // 始终禁用手势缩放，固定等比缩放比例
+        return "width=${scale.designWidth}, initial-scale=$scaleStr, maximum-scale=$scaleStr, minimum-scale=$scaleStr, user-scalable=no"
     }
 
     private fun updateWebViewZoomSettings() {
         binding.webView.settings.apply {
-            setSupportZoom(!isKioskMode)
-            builtInZoomControls = !isKioskMode
+            // 始终关闭手势缩放，避免破坏终端等比布局
+            setSupportZoom(false)
+            builtInZoomControls = false
             displayZoomControls = false
         }
     }
