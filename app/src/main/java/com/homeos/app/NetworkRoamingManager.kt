@@ -12,9 +12,9 @@ import java.net.URL
 import java.util.concurrent.Executors
 
 /**
- * Custom Network Manager that implements smart path roaming.
- * Detects whether the LAN server is reachable; if yes, routes traffic locally
- * to achieve sub-10ms response times. Otherwise, falls back to the WAN cloud endpoint.
+ * 实现智能路径漫游的自定义网络管理器。
+ * 检测局域网服务器是否可达；如果可达，将流量路由到本地以实现亚毫秒级响应时间。
+ * 否则回退到公网云端端点。
  */
 class NetworkRoamingManager(private val context: Context) {
 
@@ -26,29 +26,29 @@ class NetworkRoamingManager(private val context: Context) {
     }
 
     /**
-     * Probes local network address to resolve optimal web root.
+     * 探测本地网络地址以解析最佳 Web 根路径。
      */
     fun resolveOptimalRoute(lanUrl: String, wanUrl: String, callback: RoamingCallback) {
         if (!isNetworkConnected()) {
-            callback.onRouteResolved(wanUrl, false) // Default back to WAN/offline handler
+            callback.onRouteResolved(wanUrl, false) // 默认回退到公网/离线处理
             return
         }
 
         if (lanUrl.isEmpty()) {
-            Log.d("AuraRoaming", "LAN URL is empty, routing directly to WAN: $wanUrl")
+            Log.d("Roaming", "局域网 URL 为空，直接路由到公网: $wanUrl")
             callback.onRouteResolved(wanUrl, false)
             return
         }
 
-        Log.d("AuraRoaming", "Initiating network path resolution...")
+        Log.d("Roaming", "正在解析网络路径...")
         executor.execute {
             val isLanAvailable = testConnection(lanUrl, timeoutMs = 1500)
             mainHandler.post {
                 if (isLanAvailable) {
-                    Log.d("AuraRoaming", "Resolved optimal route to LAN: $lanUrl")
+                    Log.d("Roaming", "已解析到局域网: $lanUrl")
                     callback.onRouteResolved(lanUrl, true)
                 } else {
-                    Log.d("AuraRoaming", "LAN connection timed out or unreachable. Routing to WAN: $wanUrl")
+                    Log.d("Roaming", "局域网连接超时或不可达。路由到公网: $wanUrl")
                     callback.onRouteResolved(wanUrl, false)
                 }
             }
@@ -56,7 +56,7 @@ class NetworkRoamingManager(private val context: Context) {
     }
 
     /**
-     * Determines whether the physical device is connected to any internet/intranet network.
+     * 确定物理设备是否连接到任何互联网/局域网。
      */
     private fun isNetworkConnected(): Boolean {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -69,8 +69,7 @@ class NetworkRoamingManager(private val context: Context) {
     }
 
     /**
-     * Performs a lightweight TCP connection probe (HTTP GET /health or /)
-     * to check if local server is online.
+     * 执行轻量级 TCP 连接探测（HTTP HEAD 请求）以检查本地服务器是否在线。
      */
     private fun testConnection(urlString: String, timeoutMs: Int): Boolean {
         var connection: HttpURLConnection? = null
@@ -79,15 +78,15 @@ class NetworkRoamingManager(private val context: Context) {
             connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = timeoutMs
             connection.readTimeout = timeoutMs
-            connection.requestMethod = "HEAD" // Keep request payload ultra-low
-            connection.setRequestProperty("User-Agent", HomeOsAuth.APP_USER_AGENT)
+            connection.requestMethod = "HEAD" // 保持请求载荷极低
+            connection.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
             connection.connect()
             
-            // Any response code between 200 and 399 indicates the server is healthy
+            // 200 到 399 之间的任何响应码都表示服务器健康
             val responseCode = connection.responseCode
             responseCode in 200..399
         } catch (e: IOException) {
-            Log.w("AuraRoaming", "Ping failed for $urlString: ${e.message}")
+            Log.w("Roaming", "连接 $urlString 失败: ${e.message}")
             false
         } finally {
             connection?.disconnect()

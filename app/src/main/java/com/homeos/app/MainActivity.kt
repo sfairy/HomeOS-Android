@@ -37,9 +37,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * MainActivity: Represents the industrial Kiosk display window.
- * Hosts the fully-accelerated, high-performance WebView, binds the native JS Bridge interface,
- * manages immersive full-screen display overlays, and handles connection auto-recovery.
+ * MainActivity: 工业级 Kiosk 大屏显示窗口主类
+ * 托管完全加速的高性能 WebView，绑定原生 JS Bridge 接口，
+ * 管理沉浸式全屏显示覆盖层，并处理连接自动恢复。
  */
 class MainActivity : AppCompatActivity() {
 
@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize storage first to set the language locale before view creation
+        // 首先初始化存储，在视图创建前设置语言区域
         sharedPreferences = getSharedPreferences("HomeOSPreferences", Context.MODE_PRIVATE)
         val lang = sharedPreferences.getString("app_language", "zh") ?: "zh"
         setAppLocale(this, lang)
@@ -74,10 +74,10 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Check privacy policy acceptance before initializing any services or network
+        // 在初始化任何服务或网络之前检查隐私政策接受状态
         val privacyAccepted = sharedPreferences.getBoolean("privacy_accepted", false)
         if (!privacyAccepted) {
-            Log.i("MainActivity", "Privacy Policy not accepted yet. Displaying dialog blocker.")
+            Log.i("MainActivity", "隐私政策尚未接受。显示弹窗拦截器。")
             showPrivacyPolicyDialog()
         } else {
             initializeAfterPrivacy()
@@ -85,52 +85,51 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeAfterPrivacy() {
-        // Load other configuration values
+        // 加载其他配置值
         loadSavedConfig()
 
         roamingManager = NetworkRoamingManager(this)
         orchestrator = NotificationOrchestrator(this)
 
-        // 2. Configure hardware screen locking based on mode
+        // 2. 根据模式配置硬件屏幕锁定
         updateScreenLocking()
 
-        // 3. Configure full system immersive UI
+        // 3. 配置全系统沉浸式 UI
         applySystemImmersiveMode()
 
-        // 4. Initialize WebView components
+        // 4. 初始化 WebView 组件
         setupWebView()
 
-        // 5. Setup Action Buttons & Gesture detection for Settings Config Panel
+        // 5. 设置设置配置面板的操作按钮和手势检测
         setupGestureInterceptors()
         setupControlListeners()
 
-        // 6. Connect to back-end services
-        startAuraServices()
+        // 6. 连接后端服务
+        startServices()
 
-        // Check if configuration is set; if not (or if it's default), force showing the Setup screen
+        // 检查是否已配置；如果未配置（或使用默认值），强制显示设置屏幕
         val isConfigured = sharedPreferences.getBoolean("is_configured", false)
         if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:8501") {
-            Log.i("MainActivity", "App not configured or has default dummy URL. Forcing Setup dialog.")
+            Log.i("MainActivity", "应用未配置或使用默认虚拟 URL。强制显示设置弹窗。")
             toggleSettingsOverlay(true)
         } else {
-            // 7. Route & Load Optimal URL
+            // 7. 路由并加载最佳 URL
             routeAndLoadUrl()
         }
 
-        // 8. Handle any incoming deep-link intents (e.g., notification clicks)
+        // 8. 处理任何传入的深度链接意图（例如通知点击）
         handleIntent(intent)
     }
 
     /**
-     * Renders a highly polished Cyberpunk/Material style dialog blocking app access
-     * until the Privacy Policy is explicitly accepted. Matches the big-screen aesthetic.
+     * 渲染高度精致的赛博朋克/材质风格弹窗，阻止应用访问直到明确接受隐私政策。
+     * 与大屏幕美学相匹配。
      */
     private fun showPrivacyPolicyDialog() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setCancelable(false)
 
-        val isTraditional = tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
-        val isZh = tempSelectedLang == "zh" || isTraditional
+        val isZh = tempSelectedLang == "zh"
 
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
@@ -153,11 +152,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(iconView)
 
         val titleText = android.widget.TextView(this).apply {
-            text = when {
-                isTraditional -> "HomeOS 隱私協議與授權聲明"
-                isZh -> "HomeOS 隐私协议与授权声明"
-                else -> "隐私政策与授权声明"
-            }
+            text = if (isZh) "HomeOS 隐私协议与授权声明" else "隐私政策与授权声明"
             textSize = 20f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -210,27 +205,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val privacyBody = android.widget.TextView(this).apply {
-            text = when {
-                isTraditional -> """
-                    歡迎使用 HomeOS 伴侶終端！我們高度重視您的個人隱私與數據安全。在您同意本協議前，應用程序不會初始化任何第三方 SDK 或是發起任何網絡通訊。
-
-                    請您仔細閱讀以下關鍵條款：
-                    
-                    1. 數據收集範圍
-                    我們僅收集運行所必需的本地配置信息，包括局域網/公網網關地址、用於身份校驗的加密憑據，以及可選的推送服務（FCM/HMS）唯一標識符。
-                    
-                    2. 硬件指紋與密鑰審計
-                    為確保 Pro 版商業授權的安全性，我們會生成 Settings.Secure.ANDROID_ID 的 SHA-256 單向哈希值，作為本設備的唯一硬件指纹（HWID）。該哈希值不可反向還原，僅用於 RSA 安全認證與心跳審計，絕不包含任何個人身份隱私。
-                    
-                    3. 本地化安全存儲
-                    您的所有服務器賬號與密碼均通過 Android SharedPreferences 進行本機加密隔離存儲。WebView 中的會話緩存與 Token 同样受到系統沙盒保護。
-                    
-                    4. 數據零共享
-                    本應用為 100% 私有化或直連您的專屬閘道運行。我們承諾絕不會向任何第三方機構或個人透露、銷售或共享您的任何配置、密鑰或傳感器遙測數據。
-
-                    點擊「同意並繼續」即代表您接受以上隱私協議與服務條款，我們將為您解鎖完整的賽博科技中控體驗。
-                """.trimIndent()
-                isZh -> """
+            text = if (isZh) """
                     欢迎使用 HomeOS 伴侣终端！我们高度重视您的个人隐私与数据安全。在您同意本协议前，应用程序不会初始化任何第三方 SDK 或是发起任何网络通讯。
 
                     请您仔细阅读以下关键条款：
@@ -248,8 +223,7 @@ class MainActivity : AppCompatActivity() {
                     本应用为 100% 私有化或直连您的专属网关运行。我们承诺绝不会向任何第三方机构或个人透露、销售或共享您的任何配置、密钥或传感器遥测数据。
 
                     点击"同意并继续"即代表您接受以上隐私协议与服务条款，我们将为您解锁完整的赛博科技中控体验。
-                """.trimIndent()
-                else -> """
+                """.trimIndent() else """
                     欢迎使用 HomeOS 伴侣终端！我们高度重视您的个人隐私与数据安全。在您同意本协议前，应用程序不会初始化任何第三方 SDK 或发起任何网络通讯。
 
                     请仔细阅读以下核心条款：
@@ -268,7 +242,6 @@ class MainActivity : AppCompatActivity() {
 
                     点击"同意并继续"即代表您接受这些条款，我们将为您解锁完整的智能家居体验。
                 """.trimIndent()
-            }
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             setLineSpacing(0f, 1.3f)
@@ -289,11 +262,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val agreeButton = android.widget.Button(this).apply {
-            text = when {
-                isTraditional -> "同意並繼續"
-                isZh -> "同意并继续"
-                else -> "同意并继续"
-            }
+            text = if (isZh) "同意并继续" else "同意并继续"
             textSize = 14f
             setTextColor(Color.BLACK)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -321,11 +290,7 @@ class MainActivity : AppCompatActivity() {
         buttonsLayout.addView(agreeButton)
 
         val disagreeButton = android.widget.TextView(this).apply {
-            text = when {
-                isTraditional -> "不同意並退出"
-                isZh -> "不同意并退出"
-                else -> "不同意并退出"
-            }
+            text = if (isZh) "不同意并退出" else "不同意并退出"
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -358,12 +323,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Helper to set language configuration dynamically at runtime.
+     * 辅助函数：在运行时动态设置语言配置。
      */
     private fun setAppLocale(context: Context, languageCode: String) {
         val locale = when (languageCode) {
-            "zh-rTW", "zh-TW" -> java.util.Locale("zh", "TW")
-            "zh-rCN", "zh" -> java.util.Locale("zh", "CN")
+            "zh" -> java.util.Locale("zh", "CN")
             "en" -> java.util.Locale("en")
             else -> java.util.Locale(languageCode)
         }
@@ -377,10 +341,8 @@ class MainActivity : AppCompatActivity() {
             config.locale ?: java.util.Locale.getDefault()
         }
         
-        val isMatch = if (languageCode == "zh-rTW" || languageCode == "zh-TW") {
-            currentLocale.language == "zh" && currentLocale.country == "TW"
-        } else if (languageCode == "zh") {
-            currentLocale.language == "zh" && currentLocale.country != "TW"
+        val isMatch = if (languageCode == "zh") {
+            currentLocale.language == "zh"
         } else {
             currentLocale.language == languageCode
         }
@@ -400,7 +362,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Reads saved server configuration from secure local storage.
+     * 从安全本地存储读取已保存的服务器配置。
      */
     private fun loadSavedConfig() {
         lanUrl = sharedPreferences.getString("server_lan_url", "") ?: ""
@@ -426,7 +388,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Commits configuration values to local storage.
+     * 将配置值提交到本地存储。
      */
     private fun saveConfig(
         newLan: String,
@@ -447,30 +409,30 @@ class MainActivity : AppCompatActivity() {
             putString("server_wan_url", wanUrl)
             putString("auth_user", user)
             putString("auth_pass", pass)
-            putString(HomeOsAuth.KEY_AUTH_TOKEN, authToken)
-            putString(HomeOsAuth.KEY_CSRF_TOKEN, csrfToken)
+            putString(HomeOSAuth.KEY_AUTH_TOKEN, authToken)
+            putString(HomeOSAuth.KEY_CSRF_TOKEN, csrfToken)
             putBoolean("is_kiosk_mode", isKioskMode)
             putString("app_language", newLang)
             putBoolean("is_configured", true)
             apply()
         }
 
-        // Apply new language
+        // 应用新语言设置
         setAppLocale(this, newLang)
 
         updateScreenLocking()
         
-        // Recreate the activity to apply language changes instantly
+        // 重新创建活动以立即应用语言更改
         if (!isFinishing && !isDestroyed) {
             recreate()
         }
         
-        // Restart the WebSocket background monitoring service with the new address
-        startAuraServices()
+        // 使用新地址重启 WebSocket 后台监控服务
+        startServices()
     }
 
     /**
-     * Keeps screen on persistently if the app runs in Wall Kiosk mode.
+     * 如果应用在挂墙大屏模式下运行，保持屏幕持续常亮。
      */
     private fun updateScreenLocking() {
         if (isKioskMode) {
@@ -483,8 +445,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Forces system navigation and status bars into absolute hidden, immersive modes.
-     * Swiping from the edges shows translucent transient bars that hide again automatically.
+     * 将系统导航栏和状态栏强制设置为完全隐藏的沉浸式模式。
+     * 从边缘滑动可显示半透明临时栏，之后会自动隐藏。
      */
     private fun applySystemImmersiveMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -507,11 +469,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Core configuration for accelerated Chromium engine.
+     * 加速 Chromium 引擎的核心配置。
      */
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun setupWebView() {
-        // Enforce maximum GPU and composition rendering acceleration
+        // 强制启用最大 GPU 和合成渲染加速
         binding.webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
         binding.webView.settings.apply {
@@ -524,40 +486,36 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             
             val savedLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
-            val webLang = when (savedLang) {
-                "zh-rTW", "zh-TW" -> "zh-TW"
-                "en" -> "en"
-                else -> "zh-CN"
-            }
-            userAgentString = "${HomeOsAuth.APP_USER_AGENT} Lang/$webLang"
+            val webLang = if (savedLang == "en") "en" else "zh-CN"
+            userAgentString = "${HomeOSAuth.APP_USER_AGENT} Lang/$webLang"
             
-            // Allow auto-playing live streams and camera feeds
+            // 允许自动播放直播流和摄像头画面
             mediaPlaybackRequiresUserGesture = false
             
-            // Allow Zoom if needed on smaller displays
+            // 在较小屏幕上允许缩放（但实际禁用）
             builtInZoomControls = false
             displayZoomControls = false
             
-            // Enable viewport scaling for responsive web pages
+            // 启用视口缩放以支持响应式网页
             useWideViewPort = true
             loadWithOverviewMode = true
             
-            // Ensure text zoom doesn't affect layout
+            // 确保文本缩放不影响布局
             textZoom = 100
         }
         
-        // Set initial scale to 0 for automatic scaling based on viewport (WebView method)
+        // 将初始缩放设置为 0，以便基于视口自动缩放
         binding.webView.setInitialScale(0)
 
-        // Inject the secure cross-platform bridge object
-        binding.webView.addJavascriptInterface(AuraNativeBridge(this), "AuraNative")
+        // 注入安全的跨平台桥接对象
+        binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
 
-        // Support file downloads (Export full configuration backup)
+        // 支持文件下载（导出完整配置备份）
         binding.webView.setDownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
             shareOrSaveDownloadedFile(url, mimetype, contentDisposition)
         }
 
-        // Support file picker inputs (Import configuration backup)
+        // 支持文件选择器输入（导入配置备份）
         binding.webView.webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onShowFileChooser(
                 webView: WebView?,
@@ -582,7 +540,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Hook system client events
+        // 挂钩系统客户端事件
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
@@ -600,7 +558,7 @@ class MainActivity : AppCompatActivity() {
             ) {
                 super.onReceivedError(view, request, error)
                 recoveryHandler.removeCallbacks(loadTimeoutRunnable)
-                // Filter out non-main-frame asset loading errors
+                // 过滤非主框架资源加载错误
                 if (request?.isForMainFrame == true) {
                     handlePageLoadFailure()
                 }
@@ -620,14 +578,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Intercepts external URLs in the main frame and forces opening them in the default system browser.
+     * 拦截主框架中的外部 URL，并强制在默认系统浏览器中打开。
      */
     private fun handleUrlRedirection(url: String): Boolean {
         try {
             val uri = Uri.parse(url)
             val scheme = uri.scheme ?: return false
             
-            // 1. Intercept mailto, tel, or other non-http schemes to open in system handler
+            // 1. 拦截 mailto、tel 或其他非 http 协议，在系统处理器中打开
             if (scheme != "http" && scheme != "https") {
                 val intent = Intent(Intent.ACTION_VIEW, uri)
                 if (intent.resolveActivity(packageManager) != null) {
@@ -639,7 +597,7 @@ class MainActivity : AppCompatActivity() {
             
             val targetHost = uri.host ?: return false
             
-            // 2. Open external links in default browser
+            // 2. 在默认浏览器中打开外部链接
             val mainUri = runCatching { Uri.parse(activeUrl) }.getOrNull()
             val mainHost = mainUri?.host
             
@@ -648,14 +606,14 @@ class MainActivity : AppCompatActivity() {
             
             val isLocal = targetHost.equals("localhost", ignoreCase = true) || targetHost.equals("127.0.0.1")
             
-            // If the target host matches our current main host, or lan host, or wan host, or is localhost, it's internal
+            // 如果目标主机匹配当前主主机、局域网主机、公网主机或本地主机，则为内部链接
             val isInternal = (mainHost != null && targetHost.equals(mainHost, ignoreCase = true)) ||
                     (lanHost != null && targetHost.equals(lanHost, ignoreCase = true)) ||
                     (wanHost != null && targetHost.equals(wanHost, ignoreCase = true)) ||
                     isLocal
                     
             if (!isInternal) {
-                Log.d("MainActivity", "Intercepted external URL loading in main frame: $url. Opening in external browser...")
+                Log.d("MainActivity", "拦截主框架中的外部 URL 加载: $url. 在外部浏览器中打开...")
                 val intent = Intent(Intent.ACTION_VIEW, uri)
                 startActivity(intent)
                 return true
@@ -667,7 +625,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Handles the file picker result and returns the selected file Uri to WebView.
+     * 处理文件选择器结果，并将选中的文件 Uri 返回给 WebView。
      */
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -684,14 +642,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Intercepts base64 data URLs downloaded from WebView, saves them as a temporary file,
-     * and triggers a native Android Share Sheet so the user can save or send the backup.
+     * 拦截从 WebView 下载的 base64 数据 URL，将其保存为临时文件，
+     * 并触发原生 Android 分享面板，以便用户保存或发送备份文件。
      */
     private fun shareOrSaveDownloadedFile(url: String, mimeType: String?, contentDisposition: String?) {
         try {
             val isZh = tempSelectedLang == "zh"
             
-            // Extract file name
+            // 提取文件名
             var fileName = "HomeOS_backup.json"
             if (contentDisposition != null) {
                 val index = contentDisposition.indexOf("filename=")
@@ -700,7 +658,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             
-            // Extract data content if it's base64 or plain data URL
+            // 如果是 base64 或普通数据 URL，提取数据内容
             val dataBytes: ByteArray
             if (url.startsWith("data:")) {
                 val commaIndex = url.indexOf(",")
@@ -716,19 +674,19 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
             } else {
-                // If it's a blob or network URL, open in system browser or download manager
+                // 如果是 blob 或网络 URL，在系统浏览器或下载管理器中打开
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 startActivity(intent)
                 return
             }
             
-            // Save to temporary cache directory
+            // 保存到临时缓存目录
             val tempFile = java.io.File(cacheDir, fileName)
             java.io.FileOutputStream(tempFile).use { fos ->
                 fos.write(dataBytes)
             }
             
-            // Share via FileProvider to avoid FileUriExposedException and bypass runtime permission prompts
+            // 通过 FileProvider 分享以避免 FileUriExposedException 并绕过运行时权限提示
             val fileUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", tempFile)
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = mimeType ?: "application/json"
@@ -748,8 +706,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Intercepts gestures. A double-finger double-tap triggers
-     * the system administrator configuration overlay dashboard!
+     * 拦截手势操作。三指连击可触发系统管理员配置面板！
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupGestureInterceptors() {
@@ -761,7 +718,7 @@ class MainActivity : AppCompatActivity() {
         val sharedGestureListener = View.OnTouchListener { view, event ->
             val actionMasked = event.actionMasked
 
-            // 1. Detect 3-Finger Tap (Any Down event where pointer count is 3)
+            // 1. 检测三指点击（任何指针数量为 3 的按下事件）
             if ((actionMasked == MotionEvent.ACTION_POINTER_DOWN || actionMasked == MotionEvent.ACTION_DOWN) && event.pointerCount == 3) {
                 val currentTime = System.currentTimeMillis()
                 if (currentTime - lastThreeFingerTapTime < 1000L) {
@@ -779,11 +736,11 @@ class MainActivity : AppCompatActivity() {
                     Log.i("MainActivity", "检测到三指连击！正在打开设置。")
                     threeFingerTapCount = 0
                     toggleSettingsOverlay(true)
-                    return@OnTouchListener true // Intercept!
+                    return@OnTouchListener true // 拦截！
                 }
             }
 
-            // 2. Fallback: Top-Right Corner 5-Click (150x150 hot zone for wall-mounted tablet friendliness)
+            // 2. 备用方案：右上角五连击（150x150 热点区域，便于壁挂式平板操作）
             if (actionMasked == MotionEvent.ACTION_DOWN) {
                 val x = event.x
                 val y = event.y
@@ -804,27 +761,27 @@ class MainActivity : AppCompatActivity() {
                         Log.i("MainActivity", "检测到右上角五连击！正在打开设置。")
                         cornerClickCount = 0
                         toggleSettingsOverlay(true)
-                        return@OnTouchListener true // Intercept!
+                        return@OnTouchListener true // 拦截！
                     }
                 }
             }
 
-            // Consume touch events on the loadingOverlay to prevent click leaks,
-            // while returning false for webView to ensure page scrolls/taps are processed.
+            // 消费 loadingOverlay 上的触摸事件以防止点击泄漏，
+            // 同时对 webView 返回 false 以确保页面滚动/点击事件被处理。
             view.id == binding.loadingOverlay.id
         }
 
-        // Configure loading overlay attributes to make it focusable/clickable
+        // 配置 loading overlay 属性使其可聚焦/可点击
         binding.loadingOverlay.isClickable = true
         binding.loadingOverlay.isFocusable = true
 
-        // Apply shared gesture listener to both active views
+        // 将共享手势监听器应用到两个活动视图
         binding.webView.setOnTouchListener(sharedGestureListener)
         binding.loadingOverlay.setOnTouchListener(sharedGestureListener)
     }
 
     /**
-     * Helper to load Resources for a specific locale dynamically without restarting the Activity context.
+     * 辅助函数：在不重启 Activity 上下文的情况下动态加载特定语言环境的资源。
      */
     private fun getLocalizedResources(context: Context, localeCode: String): android.content.res.Resources {
         val locale = java.util.Locale(localeCode)
@@ -844,7 +801,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Instantly refreshes all visible strings in the settings overlay matching the specified language code.
+     * 立即刷新设置面板中所有可见字符串以匹配指定的语言代码。
      */
     private fun applyLanguageToSettingsUI(langCode: String) {
         val res = getLocalizedResources(this, langCode)
@@ -863,23 +820,11 @@ class MainActivity : AppCompatActivity() {
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
         
-        binding.btnQuickDemo.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "一鍵進入演示系統"
-            "zh" -> "一键进入演示系统"
-            else -> "进入演示模式"
-        }
-        binding.btnExitDemo.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "一鍵退出演示系統"
-            "zh" -> "一键退出演示系统"
-            else -> "退出演示模式"
-        }
-        binding.btnWipeData.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "擦除數據並退出"
-            "zh" -> "擦除数据并退出"
-            else -> "擦除数据并退出"
-        }
+        binding.btnQuickDemo.text = if (langCode == "zh") "一键进入演示系统" else "进入演示模式"
+        binding.btnExitDemo.text = if (langCode == "zh") "一键退出演示系统" else "退出演示模式"
+        binding.btnWipeData.text = if (langCode == "zh") "擦除数据并退出" else "擦除数据并退出"
         
-        // Handle "Save Config" vs "Save Anyway"
+        // 处理"保存配置"与"强制保存"的切换
         val currentBtnText = binding.btnSaveSettings.text.toString()
         val anywayZH = "强制保存"
         val anywayEN = "Save Anyway"
@@ -891,7 +836,7 @@ class MainActivity : AppCompatActivity() {
             binding.btnSaveSettings.text = res.getString(R.string.save_settings)
         }
 
-        // Translate verification status message on the fly if visible
+        // 如果验证状态消息可见，即时翻译
         if (binding.txtVerificationStatus.visibility == View.VISIBLE) {
             val statusText = binding.txtVerificationStatus.text.toString()
             if (statusText.contains("Verifying") || statusText.contains("正在验证") || statusText.contains("正在校驗")) {
@@ -905,7 +850,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Binds click events to modal control elements.
+     * 绑定点击事件到模态控制元素。
      */
     private fun setupControlListeners() {
         binding.btnLangZhToggle.setOnClickListener {
@@ -914,11 +859,7 @@ class MainActivity : AppCompatActivity() {
             applyLanguageToSettingsUI(tempSelectedLang)
         }
 
-        binding.btnLangZhTwToggle.setOnClickListener {
-            tempSelectedLang = "zh-rTW"
-            updateLanguageToggleUI(tempSelectedLang)
-            applyLanguageToSettingsUI(tempSelectedLang)
-        }
+        
 
         binding.btnLangEnToggle.setOnClickListener {
             tempSelectedLang = "en"
@@ -946,25 +887,25 @@ class MainActivity : AppCompatActivity() {
 
             val isAnyway = binding.btnSaveSettings.text.toString() == currentRes.getString(R.string.save_anyway)
 
-            // If the user chooses to bypass verification or did not enter credentials, save directly
+            // 如果用户选择跳过验证或未输入凭据，直接保存
             if (isAnyway || userStr.isEmpty()) {
                 saveConfig(lanStr, wanStr, userStr, passStr, "", "", isKiosk, selectedLang)
                 toggleSettingsOverlay(false)
                 return@setOnClickListener
             }
 
-            // Show verification status loading state
+            // 显示验证状态加载状态
             binding.txtVerificationStatus.visibility = View.VISIBLE
             binding.txtVerificationStatus.setTextColor(Color.parseColor("#00E5FF"))
             binding.txtVerificationStatus.text = currentRes.getString(R.string.verifying_server)
             binding.btnSaveSettings.isEnabled = false
 
             executor.execute {
-                var loginResult = HomeOsAuth.performLogin(lanStr, userStr, passStr)
+                var loginResult = HomeOSAuth.performLogin(lanStr, userStr, passStr)
                 var resolvedBaseUrl = lanStr
 
                 if (!loginResult.success && wanStr.isNotEmpty() && !wanStr.contains("yourdomain.com")) {
-                    loginResult = HomeOsAuth.performLogin(wanStr, userStr, passStr)
+                    loginResult = HomeOSAuth.performLogin(wanStr, userStr, passStr)
                     resolvedBaseUrl = wanStr
                 }
 
@@ -1010,14 +951,14 @@ class MainActivity : AppCompatActivity() {
             showDemoModeIntroductionDialog { dialog ->
                 val isZh = tempSelectedLang == "zh"
                 
-                // Disable settings overlay buttons to prevent secondary actions
+                // 禁用设置覆盖层按钮以防止二次操作
                 binding.btnSaveSettings.isEnabled = false
                 binding.btnCancelSettings.isEnabled = false
                 binding.btnQuickDemo.isEnabled = false
 
-                // 2. Async silent network handshake
+                // 2. 异步静默网络握手
                 executor.execute {
-                    val loginResult = HomeOsAuth.performLogin("https://demo2.iaura.cn", "admin", "123456")
+                    val loginResult = HomeOSAuth.performLogin("https://demo2.ihomeos.cn", "admin", "123456")
                     val finalResult = loginResult
 
                     runOnUiThread {
@@ -1038,8 +979,8 @@ class MainActivity : AppCompatActivity() {
                             binding.btnCancelSettings.visibility = View.VISIBLE
 
                             saveConfig(
-                                "https://demo2.iaura.cn",
-                                "https://demo2.iaura.cn",
+                                "https://demo2.ihomeos.cn",
+                                "https://demo2.ihomeos.cn",
                                 "admin",
                                 "123456",
                                 finalResult.authToken,
@@ -1069,15 +1010,15 @@ class MainActivity : AppCompatActivity() {
             sharedPreferences.edit().apply {
                 remove("server_lan_url")
                 remove("server_wan_url")
-                remove(HomeOsAuth.KEY_AUTH_TOKEN)
-                remove(HomeOsAuth.KEY_CSRF_TOKEN)
+                remove(HomeOSAuth.KEY_AUTH_TOKEN)
+                remove(HomeOSAuth.KEY_CSRF_TOKEN)
                 putBoolean("is_demo_mode", false)
                 putBoolean("is_configured", false)
                 apply()
             }
-            HomeOsAuth.clearAuthTokens(sharedPreferences)
-            // Stop background WebSocket service to free resources
-            stopService(Intent(this, AuraSocketService::class.java))
+            HomeOSAuth.clearAuthTokens(sharedPreferences)
+            // 停止后台 WebSocket 服务以释放资源
+            stopService(Intent(this, SocketService::class.java))
             clearAppCacheAndWebView(this)
             if (!isFinishing && !isDestroyed) {
                 recreate()
@@ -1092,9 +1033,9 @@ class MainActivity : AppCompatActivity() {
                 putBoolean("is_configured", false)
                 apply()
             }
-            HomeOsAuth.clearAuthTokens(sharedPreferences)
-            // Stop background WebSocket service to free resources
-            stopService(Intent(this, AuraSocketService::class.java))
+            HomeOSAuth.clearAuthTokens(sharedPreferences)
+            // 停止后台 WebSocket 服务以释放资源
+            stopService(Intent(this, SocketService::class.java))
             clearAppCacheAndWebView(this)
             if (!isFinishing && !isDestroyed) {
                 recreate()
@@ -1103,15 +1044,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Shows a beautiful, high-end dialog explaining Demo Mode, PRO features, and limitations.
+     * 显示一个精美的高端弹窗，解释演示模式、PRO 功能和限制。
      */
     private fun showDemoModeIntroductionDialog(onConfirm: (android.app.Dialog) -> Unit) {
-        val isTraditional = tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
-        val isZh = tempSelectedLang == "zh" || isTraditional
+        val isZh = tempSelectedLang == "zh"
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setCancelable(false)
         
-        // Deep obsidian background layout
+        // 深黑曜石背景布局
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#08080C"))
@@ -1119,7 +1059,7 @@ class MainActivity : AppCompatActivity() {
             gravity = android.view.Gravity.CENTER_HORIZONTAL
         }
         
-        // 1. Beautiful Cyber Handshake Loader (Initially GONE)
+        // 1. 精美的赛博风格握手加载器（初始状态为隐藏）
         val loadingLayout = android.widget.LinearLayout(this).apply {
             id = 10003
             orientation = android.widget.LinearLayout.VERTICAL
@@ -1138,11 +1078,7 @@ class MainActivity : AppCompatActivity() {
             addView(progressBar)
             
             val loadingText = android.widget.TextView(this@MainActivity).apply {
-                text = when {
-                    isTraditional -> "正在安全認證演示系統..."
-                    isZh -> "正在安全认证演示系统..."
-                    else -> "正在安全认证演示系统..."
-                }
+                text = if (isZh) "正在安全认证演示系统..." else "正在安全认证演示系统..."
                 textSize = 14f
                 setTextColor(Color.parseColor("#00E5FF"))
                 typeface = android.graphics.Typeface.MONOSPACE
@@ -1152,11 +1088,7 @@ class MainActivity : AppCompatActivity() {
             addView(loadingText)
             
             val loadingSubText = android.widget.TextView(this@MainActivity).apply {
-                text = when {
-                    isTraditional -> "正在為您跨國建立安全加密信道"
-                    isZh -> "正在为您跨国建立安全加密信道"
-                    else -> "正在为您跨国建立安全加密信道"
-                }
+                text = if (isZh) "正在为您跨国建立安全加密信道" else "正在为您跨国建立安全加密信道"
                 textSize = 11f
                 setTextColor(Color.GRAY)
                 typeface = android.graphics.Typeface.MONOSPACE
@@ -1165,7 +1097,7 @@ class MainActivity : AppCompatActivity() {
             addView(loadingSubText)
         }
         
-        // Icon / Header
+        // 图标/头部区域
         val headerView = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             gravity = android.view.Gravity.CENTER_HORIZONTAL
@@ -1185,11 +1117,7 @@ class MainActivity : AppCompatActivity() {
         headerView.addView(shieldIcon)
         
         val titleText = android.widget.TextView(this).apply {
-            text = when {
-                isTraditional -> "\uD83D\uDCA1 HomeOS PRO 演示沙盒體驗指南"
-                isZh -> "\uD83D\uDCA1 HomeOS PRO 演示沙盒体验指南"
-                else -> "\uD83D\uDCA1 HomeOS PRO 演示沙盒体验指南"
-            }
+            text = if (isZh) "\uD83D\uDCA1 HomeOS PRO 演示沙盒体验指南" else "\uD83D\uDCA1 HomeOS PRO 演示沙盒体验指南"
             textSize = 20f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1221,7 +1149,7 @@ class MainActivity : AppCompatActivity() {
         
         container.addView(headerView)
         
-        // Scrollable content area
+        // 可滚动内容区域
         val scrollView = android.widget.ScrollView(this).apply {
             id = 10001
             layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -1247,11 +1175,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         val introText = android.widget.TextView(this).apply {
-            text = when {
-                isTraditional -> "歡迎體驗 HomeOS 智能中控伴侶終端！您即將進入公網演示沙盒系統。為了保障您的體驗，请知悉以下事項："
-                isZh -> "欢迎体验 HomeOS 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项："
-                else -> "欢迎体验 HomeOS 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项："
-            }
+            text = if (isZh) "欢迎体验 HomeOS 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项：" else "欢迎体验 HomeOS 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项："
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             setLineSpacing(0f, 1.2f)
@@ -1264,7 +1188,7 @@ class MainActivity : AppCompatActivity() {
         }
         contentLayout.addView(introText)
         
-        // Helper to add list items
+        // 辅助函数：添加列表项
         fun addFeatureItem(number: String, title: String, desc: String) {
             val itemLayout = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.HORIZONTAL
@@ -1324,32 +1248,23 @@ class MainActivity : AppCompatActivity() {
             contentLayout.addView(itemLayout)
         }
         
-        when {
-            isTraditional -> {
-                addFeatureItem("1️⃣", "尊享 PRO 全功能體驗", "本演示系統已全面啟用 PRO 商業版全部高級特性。您可以自由體驗多樓層連動、自定義畫布組件、安全中心駕駛艙、實時高幀率天氣動畫系統等全套工業級功能！")
-                addFeatureItem("2️⃣", "零風險仿真沙盒運行", "此環境連接的是獨立的虛擬仿真數據源，您的任何開關控制、場景切換等控制指令都是完全安全的，不會影響任何真實物理設備，請盡情點擊測試！")
-                addFeatureItem("3️⃣", "布局唯讀保護限制", "為保護公共演示界面的整潔，本模式下不支持永久保存布局修改或上傳底圖資產。")
-                addFeatureItem("⚙️", "如何退出演示模式", "提示：如果您需要退出演示模式，請使用【三根手指在屏幕任意位置連續敲擊 3 次】即可呼出后台管理設置菜單，選擇「一鍵退出演示模式」即可。")
-            }
-            isZh -> {
-                addFeatureItem("1️⃣", "尊享 PRO 全功能体验", "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！")
-                addFeatureItem("2️⃣", "零风险仿真沙盒运行", "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！")
-                addFeatureItem("3️⃣", "布局只读保护限制", "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。")
-                addFeatureItem("⚙️", "如何退出演示模式", "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择\"一键退出演示模式\"即可。")
-            }
-            else -> {
-                addFeatureItem("1️⃣", "尊享 PRO 全功能体验", "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！")
-                addFeatureItem("2️⃣", "零风险仿真沙盒运行", "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！")
-                addFeatureItem("3️⃣", "布局只读保护限制", "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。")
-                addFeatureItem("⚙️", "如何退出演示模式", "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择\"一键退出演示模式\"即可。")
-            }
+        if (isZh) {
+            addFeatureItem("1️⃣", "尊享 PRO 全功能体验", "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！")
+            addFeatureItem("2️⃣", "零风险仿真沙盒运行", "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！")
+            addFeatureItem("3️⃣", "布局只读保护限制", "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。")
+            addFeatureItem("⚙️", "如何退出演示模式", "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择\"一键退出演示模式\"即可。")
+        } else {
+            addFeatureItem("1️⃣", "尊享 PRO 全功能体验", "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！")
+            addFeatureItem("2️⃣", "零风险仿真沙盒运行", "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！")
+            addFeatureItem("3️⃣", "布局只读保护限制", "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。")
+            addFeatureItem("⚙️", "如何退出演示模式", "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择\"一键退出演示模式\"即可。")
         }
         
         scrollView.addView(contentLayout)
         container.addView(scrollView)
         container.addView(loadingLayout)
         
-        // Error message text inside Dialog
+        // 对话框内的错误消息文本
         val errorText = android.widget.TextView(this).apply {
             id = 10004
             textSize = 11f
@@ -1365,7 +1280,7 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(errorText)
         
-        // Buttons
+        // 按钮区域
         val buttonsLayout = android.widget.LinearLayout(this).apply {
             id = 10002
             orientation = android.widget.LinearLayout.VERTICAL
@@ -1379,16 +1294,12 @@ class MainActivity : AppCompatActivity() {
         }
         
         val enterButton = android.widget.Button(this).apply {
-            text = when {
-                isTraditional -> "同意並立即進入體驗"
-                isZh -> "同意并立即进入体验"
-                else -> "同意并立即进入体验"
-            }
+            text = if (isZh) "同意并立即进入体验" else "同意并立即进入体验"
             textSize = 14f
             setTextColor(Color.BLACK)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             
-            // Cyber teal gradient drawable
+            // 赛博青色渐变背景
             val btnShape = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
                 intArrayOf(Color.parseColor("#00E5FF"), Color.parseColor("#0086FF"))
@@ -1405,7 +1316,7 @@ class MainActivity : AppCompatActivity() {
             }
             
             setOnClickListener {
-                // Show loader, hide contents
+                // 显示加载器，隐藏内容
                 scrollView.visibility = android.view.View.GONE
                 buttonsLayout.visibility = android.view.View.GONE
                 errorText.visibility = android.view.View.GONE
@@ -1417,11 +1328,7 @@ class MainActivity : AppCompatActivity() {
         buttonsLayout.addView(enterButton)
         
         val cancelButton = android.widget.TextView(this).apply {
-            text = when {
-                isTraditional -> "取消"
-                isZh -> "取消"
-                else -> "取消"
-            }
+            text = "取消"
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1442,15 +1349,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Clears all application caches, WebView databases, and session cookies for a clean state.
-     * Uses standard WebKit APIs to avoid dangerous disk operations that can cause SIGSEGV crashes.
+     * 清除所有应用缓存、WebView 数据库和会话 Cookie，恢复到干净状态。
+     * 使用标准 WebKit API 避免危险的磁盘操作，防止导致 SIGSEGV 崩溃。
      */
     private fun clearAppCacheAndWebView(context: android.content.Context) {
         try {
-            // 1. Clear WebView standard cache using existing instance
+            // 1. 使用现有实例清除 WebView 标准缓存
             binding.webView.clearCache(true)
             
-            // 2. Clear Session and Persistent Cookies
+            // 2. 清除会话和持久化 Cookie
             val cookieManager = android.webkit.CookieManager.getInstance()
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                 cookieManager.removeAllCookies(null)
@@ -1462,17 +1369,17 @@ class MainActivity : AppCompatActivity() {
                 cookieSyncMngr.stopSync()
             }
             
-            // 3. Clear DOM Storage (localStorage/sessionStorage)
+            // 3. 清除 DOM 存储（localStorage/sessionStorage）
             android.webkit.WebStorage.getInstance().deleteAllData()
             
-            // 4. Recursively clear internal files in App Caches Directory
+            // 4. 递归清除应用缓存目录中的内部文件
             val cacheDir = context.cacheDir
             if (cacheDir != null && cacheDir.isDirectory) {
                 deleteDirContents(cacheDir)
             }
             
-            // Note: Removed dangerous disk file deletion (webview.db, webviewCache.db)
-            // to prevent Chromium native SIGSEGV crashes when WebView is active
+            // 注意：已移除危险的磁盘文件删除操作（webview.db, webviewCache.db）
+            // 以防止 WebView 活跃时发生 Chromium 原生 SIGSEGV 崩溃
             
             android.widget.Toast.makeText(
                 context,
@@ -1544,44 +1451,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Updates the segmented capsule language switcher UI toggle states dynamically.
+     * 动态更新分段胶囊语言切换器 UI 的状态。
      */
     private fun updateLanguageToggleUI(lang: String) {
-        // Reset all buttons first
+        // 首先重置所有按钮状态
         binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
         binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
-
-        binding.btnLangZhTwToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        binding.btnLangZhTwToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
-        binding.btnLangZhTwToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
 
         binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
         binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
 
-        // Highlight selected
-        when (lang) {
-            "zh-rTW", "zh-TW" -> {
-                binding.btnLangZhTwToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
-                binding.btnLangZhTwToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
-                binding.btnLangZhTwToggle.setTypeface(null, android.graphics.Typeface.BOLD)
-            }
-            "en" -> {
-                binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
-                binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
-                binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.BOLD)
-            }
-            else -> {
-                binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
-                binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
-                binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.BOLD)
-            }
+        // 高亮选中的按钮
+        if (lang == "en") {
+            binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+            binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
+            binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+        } else {
+            binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+            binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
+            binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.BOLD)
         }
     }
 
     /**
-     * Decides whether to route traffic to the local network or external internet.
+     * 决定将流量路由到本地网络还是外部互联网。
      */
     private fun routeAndLoadUrl() {
         isErrorState = false
@@ -1594,7 +1489,7 @@ class MainActivity : AppCompatActivity() {
         roamingManager.resolveOptimalRoute(lanUrl, wanUrl, object : NetworkRoamingManager.RoamingCallback {
             override fun onRouteResolved(resolvedUrl: String, isLocal: Boolean) {
                 if (resolvedUrl.isEmpty()) {
-                    Log.e("MainActivity", "Route resolved to empty URL. Aborting WebView load.")
+                    Log.e("MainActivity", "解析到的 URL 为空。放弃加载 WebView。")
                     binding.subLoadingText.text = getString(R.string.error_no_server_url)
                     toggleSettingsOverlay(true)
                     return
@@ -1605,26 +1500,26 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     getString(R.string.wan_route_online)
                 }
-                Log.i("MainActivity", "Optimal route resolved. Loading URL: $activeUrl")
+                Log.i("MainActivity", "最佳路由已解析。正在加载 URL: $activeUrl")
 
-                val authToken = HomeOsAuth.loadAuthToken(sharedPreferences)
-                val csrfToken = HomeOsAuth.loadCsrfToken(sharedPreferences)
+                val authToken = HomeOSAuth.loadAuthToken(sharedPreferences)
+                val csrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
                 if (authToken.isNotEmpty()) {
-                    HomeOsAuth.injectCookies(activeUrl, authToken, csrfToken)
+                    HomeOSAuth.injectCookies(activeUrl, authToken, csrfToken)
                 } else {
                     val savedUser = sharedPreferences.getString("auth_user", "") ?: ""
                     val savedPass = sharedPreferences.getString("auth_pass", "") ?: ""
                     if (savedUser.isNotEmpty() && savedPass.isNotEmpty()) {
                         executor.execute {
-                            val loginResult = HomeOsAuth.performLogin(activeUrl, savedUser, savedPass)
+                            val loginResult = HomeOSAuth.performLogin(activeUrl, savedUser, savedPass)
                             if (loginResult.success) {
                                 sharedPreferences.edit().apply {
-                                    putString(HomeOsAuth.KEY_AUTH_TOKEN, loginResult.authToken)
-                                    putString(HomeOsAuth.KEY_CSRF_TOKEN, loginResult.csrfToken)
+                                    putString(HomeOSAuth.KEY_AUTH_TOKEN, loginResult.authToken)
+                                    putString(HomeOSAuth.KEY_CSRF_TOKEN, loginResult.csrfToken)
                                     apply()
                                 }
                                 runOnUiThread {
-                                    HomeOsAuth.injectCookies(activeUrl, loginResult.authToken, loginResult.csrfToken)
+                                    HomeOSAuth.injectCookies(activeUrl, loginResult.authToken, loginResult.csrfToken)
                                     loadActiveUrl(activeUrl)
                                 }
                             } else {
@@ -1647,19 +1542,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Intercepts page load errors and replaces standard Chromium error screens
-     * with our gorgeous industrial connection-lost custom view layout.
+     * 拦截页面加载错误，并用我们精美的工业风格连接丢失自定义视图布局替换标准 Chromium 错误屏幕。
      */
     private fun handlePageLoadFailure() {
         isErrorState = true
         recoveryHandler.removeCallbacks(recoveryRunnable)
         
-        // Show our offline layout screen
+        // 显示离线布局屏幕
         setContentView(R.layout.activity_offline)
         
-        // Bind actions to offline screen elements
+        // 绑定离线屏幕元素的操作
         findViewById<View>(R.id.btnConfigOffline)?.setOnClickListener {
-            // Re-render main layout to expose configuration modal
+            // 重新渲染主布局以显示配置弹窗
             setContentView(binding.root)
             toggleSettingsOverlay(true)
         }
@@ -1669,21 +1563,21 @@ class MainActivity : AppCompatActivity() {
             routeAndLoadUrl()
         }
 
-        // Schedule background recovery reconnection checks every 3 seconds
+        // 每 3 秒安排后台恢复重连检查
         recoveryHandler.postDelayed(recoveryRunnable, 3000L)
     }
 
     private fun attemptAutoRecovery() {
-        Log.d("MainActivity", "Attempting automatic network path recovery...")
+        Log.d("MainActivity", "正在尝试自动网络路径恢复...")
         roamingManager.resolveOptimalRoute(lanUrl, wanUrl, object : NetworkRoamingManager.RoamingCallback {
             override fun onRouteResolved(resolvedUrl: String, isLocal: Boolean) {
-                // If ping succeeds, recover page
+                // 如果 ping 成功，恢复页面
                 if (resolvedUrl.isNotEmpty()) {
                     recoveryHandler.removeCallbacks(recoveryRunnable)
                     setContentView(binding.root)
                     routeAndLoadUrl()
                 } else {
-                    // Retry again in 3 seconds
+                    // 3 秒后重试
                     recoveryHandler.postDelayed(recoveryRunnable, 3000L)
                 }
             }
@@ -1691,11 +1585,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * WebView connection loading timeout handler
+     * WebView 连接加载超时处理程序
      */
     private fun handleLoadTimeout() {
         if (!isFinishing && !isDestroyed) {
-            Log.w("MainActivity", "WebView load timeout reached (10s). Stopping connection.")
+            Log.w("MainActivity", "WebView 加载超时（10秒）。正在停止连接。")
             runOnUiThread {
                 binding.webView.stopLoading()
                 handlePageLoadFailure()
@@ -1704,39 +1598,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Starts background Foreground Services for active Socket.IO connection monitoring.
+     * 启动后台前台服务以进行主动的 Socket.IO 连接监控。
      */
-    private fun startAuraServices() {
+    private fun startServices() {
         try {
-            val serviceIntent = Intent(this, AuraSocketService::class.java).apply {
+            val serviceIntent = Intent(this, SocketService::class.java).apply {
                 putExtra("SERVER_URL", lanUrl)
-                putExtra("AUTH_TOKEN", HomeOsAuth.loadAuthToken(sharedPreferences))
-                putExtra("CSRF_TOKEN", HomeOsAuth.loadCsrfToken(sharedPreferences))
+                putExtra("AUTH_TOKEN", HomeOSAuth.loadAuthToken(sharedPreferences))
+                putExtra("CSRF_TOKEN", HomeOSAuth.loadCsrfToken(sharedPreferences))
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent)
             } else {
                 startService(serviceIntent)
             }
-            Log.i("MainActivity", "Foreground AuraSocketService registered successfully.")
+            Log.i("MainActivity", "前台 SocketService 注册成功。")
         } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to start foreground service: ${e.message}")
+            Log.e("MainActivity", "启动前台服务失败: ${e.message}")
         }
     }
 
     /**
-     * Intercepts intent payloads (like clicking system notifications) and routes
-     * parameters directly into the Vue 3 WebView components.
+     * 拦截意图载荷（如点击系统通知）并将参数直接路由到 Vue 3 WebView 组件中。
      */
     private fun handleIntent(intent: Intent?) {
         val openCameraEntity = intent?.getStringExtra("OPEN_CAMERA_ENTITY")
         val alertId = intent?.getStringExtra("ALERT_ID")
 
         if (openCameraEntity != null) {
-            Log.i("MainActivity", "Deep link triggered: targeting camera entity -> $openCameraEntity")
+            Log.i("MainActivity", "深度链接已触发：目标摄像头实体 -> $openCameraEntity")
             binding.webView.post {
                 binding.webView.evaluateJavascript(
-                    "if (window.__AURA_ALERT_ROUTER__) { window.__AURA_ALERT_ROUTER__('$alertId', '$openCameraEntity'); }",
+                    "if (window.__HOMEOS_ALERT_ROUTER__) { window.__HOMEOS_ALERT_ROUTER__('$alertId', '$openCameraEntity'); }",
                     null
                 )
             }
@@ -1744,7 +1637,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Prevents system back button click from crashing or closing Kiosk shell.
+     * 防止系统返回按钮点击导致 Kiosk 外壳崩溃或关闭。
      */
     override fun onBackPressed() {
         if (binding.settingsOverlay.visibility == View.VISIBLE) {
@@ -1752,7 +1645,7 @@ class MainActivity : AppCompatActivity() {
         } else if (binding.webView.canGoBack()) {
             binding.webView.goBack()
         } else {
-            // Intercept in Kiosk mode to prevent exiting app on Wall Tablet
+            // 在 Kiosk 模式下拦截返回按钮，防止壁挂平板退出应用
             if (!isKioskMode) {
                 super.onBackPressed()
             }
@@ -1765,23 +1658,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * AuraNativeBridge: Safe, sandboxed JavaScript Interface
-     * mapped to "window.AuraNative" inside the WebView.
+     * NativeBridge: 安全、沙箱化的 JavaScript 接口
+     * 在 WebView 内部映射为 "window.Native"。
      */
-    inner class AuraNativeBridge(private val context: Context) {
+    inner class NativeBridge(private val context: Context) {
 
         /**
-         * Returns SHA-256 hash of Settings.Secure.ANDROID_ID to serve as a hardware fingerprint (HWID)
-         * for the Pro version security license center. Fits beautifully with the RSA handshake.
+         * 返回 Settings.Secure.ANDROID_ID 的 SHA-256 哈希值，作为 Pro 版安全许可证中心的硬件指纹 (HWID)。
+         * 与 RSA 握手完美配合。
          */
         @JavascriptInterface
         fun getHardwareFingerprint(): String {
-            val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "DEFAULT-AURA-KEY"
+            val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "DEFAULT-HOMEOS-KEY"
             return sha256(androidId)
         }
 
         /**
-         * Returns high-fidelity device telemetry back to the Vue 3 state engine.
+         * 返回高保真设备遥测数据到 Vue 3 状态引擎。
          */
         @JavascriptInterface
         fun getDeviceInfo(): String {
@@ -1796,7 +1689,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * Returns current companion app version.
+         * 返回当前伴侣应用版本。
          */
         @JavascriptInterface
         fun getAppVersion(): String {
@@ -1809,19 +1702,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * Returns current FCM/HMS push token for backend registration.
-         * Reads from locally cached SharedPreferences (saved by onNewToken callback).
+         * 返回当前 FCM/HMS 推送令牌供后端注册使用。
+         * 从本地缓存的 SharedPreferences 读取（由 onNewToken 回调保存）。
          */
         @JavascriptInterface
         fun getPushToken(): String {
             return try {
-                // First try FCM token cached by AuraFcmService.onNewToken
+                // 首先尝试获取 FcmService.onNewToken 缓存的 FCM 令牌
                 val fcmToken = sharedPreferences.getString("fcm_push_token", "") ?: ""
                 if (fcmToken.isNotEmpty()) return fcmToken
-                // Fall back to HMS token cached by AuraHmsService.onNewToken
+                // 回退到 HmsService.onNewToken 缓存的 HMS 令牌
                 val hmsToken = sharedPreferences.getString("hms_push_token", "") ?: ""
                 if (hmsToken.isNotEmpty()) return hmsToken
-                // Asynchronously trigger a fresh token request for next time
+                // 异步触发新令牌请求供下次使用
                 try {
                     FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                         if (task.isSuccessful) {
@@ -1831,13 +1724,13 @@ class MainActivity : AppCompatActivity() {
                 } catch (_: Exception) {}
                 ""
             } catch (e: Exception) {
-                Log.e("AuraJSBridge", "Failed to retrieve push token: ${e.message}")
+                Log.e("JSBridge", "获取推送令牌失败: ${e.message}")
                 ""
             }
         }
 
         /**
-         * Returns active Kiosk work state.
+         * 返回当前活动的 Kiosk 工作状态。
          */
         @JavascriptInterface
         fun getAppMode(): String {
@@ -1845,7 +1738,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * Native player that executes audible tones corresponding to alert levels.
+         * 原生播放器，根据警报级别播放相应的声音。
          */
         @JavascriptInterface
         fun playAlertSound(severity: String) {
@@ -1858,12 +1751,12 @@ class MainActivity : AppCompatActivity() {
                 val ringtone = RingtoneManager.getRingtone(context, soundUri)
                 ringtone.play()
             } catch (e: Exception) {
-                Log.e("AuraJSBridge", "Sound playback failed: ${e.message}")
+                Log.e("JSBridge", "音频播放失败: ${e.message}")
             }
         }
 
         /**
-         * Triggers system orchestrator to dim or clear the corresponding notification bar element.
+         * 触发系统编排器来清除或淡化相应的通知栏元素。
          */
         @JavascriptInterface
         fun acknowledgeAlert(alertId: String) {

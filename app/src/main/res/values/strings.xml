@@ -14,7 +14,7 @@
     <string name="mode_companion">手机伴侣模式（系统息屏）</string>
     <string name="system_language">系统语言</string>
     <string name="lang_zh">中文</string>
-    <string name="lang_en">EN</string>
+    <string name="lang_en">English</string>
     <string name="cancel">取消</string>
     <string name="save_settings">保存配置</string>
     <string name="save_anyway">强制保存</string>

@@ -23,7 +23,7 @@ class BootReceiver : BroadcastReceiver() {
 
         // 检查是否为开机完成事件
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            Log.i("AuraBootReceiver", "捕获到设备开机完成事件。正在自动启动后台监控服务...")
+            Log.i("BootReceiver", "捕获到设备开机完成事件。正在自动启动后台监控服务...")
 
             // 获取保存的配置信息
             val sharedPreferences = context.getSharedPreferences("HomeOSPreferences", Context.MODE_PRIVATE)
@@ -31,24 +31,24 @@ class BootReceiver : BroadcastReceiver() {
             // 严格检查：用户未接受隐私政策则不启动前台服务
             val privacyAccepted = sharedPreferences.getBoolean("privacy_accepted", false)
             if (!privacyAccepted) {
-                Log.w("AuraBootReceiver", "隐私政策尚未接受。取消开机自动启动服务。")
+                Log.w("BootReceiver", "隐私政策尚未接受。取消开机自动启动服务。")
                 return
             }
 
             // 严格检查：设备未配置则不启动服务
             val isConfigured = sharedPreferences.getBoolean("is_configured", false)
             if (!isConfigured) {
-                Log.w("AuraBootReceiver", "设备尚未配置。取消开机自动启动服务。")
+                Log.w("BootReceiver", "设备尚未配置。取消开机自动启动服务。")
                 return
             }
 
             // 获取服务器地址和认证令牌
             val lanUrl = sharedPreferences.getString("server_lan_url", "http://10.0.0.90:8501") ?: "http://10.0.0.90:8501"
-            val authToken = HomeOsAuth.loadAuthToken(sharedPreferences)
-            val csrfToken = HomeOsAuth.loadCsrfToken(sharedPreferences)
+            val authToken = HomeOSAuth.loadAuthToken(sharedPreferences)
+            val csrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
 
             // 创建服务启动意图
-            val serviceIntent = Intent(context, AuraSocketService::class.java).apply {
+            val serviceIntent = Intent(context, SocketService::class.java).apply {
                 putExtra("SERVER_URL", lanUrl)
                 putExtra("AUTH_TOKEN", authToken)
                 putExtra("CSRF_TOKEN", csrfToken)
@@ -61,9 +61,9 @@ class BootReceiver : BroadcastReceiver() {
                 } else {
                     context.startService(serviceIntent)
                 }
-                Log.i("AuraBootReceiver", "AuraSocketService 从 BootReceiver 启动成功。")
+                Log.i("BootReceiver", "SocketService 从 BootReceiver 启动成功。")
             } catch (e: Exception) {
-                Log.e("AuraBootReceiver", "开机启动服务失败：${e.message}")
+                Log.e("BootReceiver", "开机启动服务失败：${e.message}")
             }
         }
     }

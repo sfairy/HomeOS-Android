@@ -18,7 +18,7 @@ import java.util.concurrent.Executors
  * 前台服务：用于轮询 HomeOS 通知 API 作为后台告警的备用方案
  * 替代旧版 Socket.IO 客户端（与 msgpack + Cookie-auth 网关不兼容）
  */
-class AuraSocketService : Service() {
+class SocketService : Service() {
 
     private var serverUrl = "http://10.0.0.90:8501"  // 服务器地址
     private var authToken = ""                        // 认证令牌
@@ -106,10 +106,10 @@ class AuraSocketService : Service() {
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
                 connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", HomeOsAuth.APP_USER_AGENT)
+                connection.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
                 connection.setRequestProperty(
                     "Cookie",
-                    HomeOsAuth.buildCookieHeader(authToken, csrfToken)
+                    HomeOSAuth.buildCookieHeader(authToken, csrfToken)
                 )
 
                 // 检查响应状态码
@@ -152,7 +152,7 @@ class AuraSocketService : Service() {
             if (!isInitialSeed) {
                 val isUnread = !item.optBoolean("read", false)
                 if (isUnread) {
-                    orchestrator.triggerFromHomeOsPayload(item)
+                    orchestrator.triggerFromHomeOSPayload(item)
                 }
             }
 
@@ -224,7 +224,7 @@ class AuraSocketService : Service() {
     }
 
     companion object {
-        private const val TAG = "AuraSocketService"           // 日志标签
+        private const val TAG = "SocketService"           // 日志标签
         private const val PREFS_NAME = "HomeOSPreferences"    // 偏好设置名称
         private const val KEY_SEEN_IDS = "seen_notification_ids"  // 已处理通知 ID 键名
         private const val POLL_INTERVAL_MS = 15_000L          // 轮询间隔（15秒）

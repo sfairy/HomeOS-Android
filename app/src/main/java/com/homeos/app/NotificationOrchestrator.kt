@@ -15,9 +15,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
- * Handles all notification orchestration.
- * Configures separate notification channels and manages wake locks
- * to wake up Kiosk tablet displays when critical events (smoke, doorbell) trigger.
+ * 处理所有通知编排。
+ * 配置独立的通知渠道并管理唤醒锁，
+ * 在关键事件（烟雾、门铃）触发时唤醒 Kiosk 平板显示器。
  */
 class NotificationOrchestrator(private val context: Context) {
 
@@ -25,10 +25,10 @@ class NotificationOrchestrator(private val context: Context) {
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
 
     companion object {
-        const val CHANNEL_CRITICAL = "aura_channel_critical"
-        const val CHANNEL_WARNING = "aura_channel_warning"
-        const val CHANNEL_INFO = "aura_channel_info"
-        const val CHANNEL_SERVICE = "aura_channel_service"
+        const val CHANNEL_CRITICAL = "homeos_channel_critical"
+        const val CHANNEL_WARNING = "homeos_channel_warning"
+        const val CHANNEL_INFO = "homeos_channel_info"
+        const val CHANNEL_SERVICE = "homeos_channel_service"
         
         const val NOTIFICATION_SERVICE_ID = 9999
     }
@@ -38,11 +38,11 @@ class NotificationOrchestrator(private val context: Context) {
     }
 
     /**
-     * Set up Oreo+ Notification Channels with distinct priorities and alerts.
+     * 设置 Oreo+ 通知渠道，具有不同的优先级和警报级别。
      */
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // 1. Silent Foreground Keepalive Channel
+            // 1. 静默前台保持通道
             val serviceChannel = NotificationChannel(
                 CHANNEL_SERVICE,
                 context.getString(R.string.channel_service_name),
@@ -53,7 +53,7 @@ class NotificationOrchestrator(private val context: Context) {
             }
             notificationManager.createNotificationChannel(serviceChannel)
 
-            // 2. Info / Broadcast channel
+            // 2. 信息/广播通道
             val infoChannel = NotificationChannel(
                 CHANNEL_INFO,
                 context.getString(R.string.channel_info_name),
@@ -63,7 +63,7 @@ class NotificationOrchestrator(private val context: Context) {
             }
             notificationManager.createNotificationChannel(infoChannel)
 
-            // 3. Warning Channel (Battery Low, Node Offline)
+            // 3. 警告通道（电池电量低、节点离线）
             val warningChannel = NotificationChannel(
                 CHANNEL_WARNING,
                 context.getString(R.string.channel_warning_name),
@@ -74,7 +74,7 @@ class NotificationOrchestrator(private val context: Context) {
             }
             notificationManager.createNotificationChannel(warningChannel)
 
-            // 4. Critical Alert Channel (Doorbell Ring, Smoke Detector, Leak Sensor)
+            // 4. 严重警报通道（门铃、烟雾探测器、漏水传感器）
             val criticalChannel = NotificationChannel(
                 CHANNEL_CRITICAL,
                 context.getString(R.string.channel_critical_name),
@@ -86,7 +86,7 @@ class NotificationOrchestrator(private val context: Context) {
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500, 200, 500)
                 
-                // Assign a highly distinct alarm sound
+                // 分配高度独特的警报声音
                 val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 val audioAttributes = AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -94,7 +94,7 @@ class NotificationOrchestrator(private val context: Context) {
                     .build()
                 setSound(alarmSound, audioAttributes)
                 
-                // Allow bypassing Do Not Disturb (DND)
+                // 允许绕过请勿打扰（DND）模式
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     setBypassDnd(true)
                 }
@@ -104,7 +104,7 @@ class NotificationOrchestrator(private val context: Context) {
     }
 
     /**
-     * Wakes the screen and fires a high-priority system notification.
+     * 唤醒屏幕并触发高优先级系统通知。
      */
     fun triggerAlertNotification(
         id: String,
@@ -113,14 +113,14 @@ class NotificationOrchestrator(private val context: Context) {
         severity: String,
         cameraEntityId: String? = null
     ) {
-        Log.i("AuraOrchestrator", "Received notification request: $title [$severity]")
+        Log.i("Orchestrator", "收到通知请求: $title [$severity]")
 
-        // 1. If CRITICAL and screen is off, request WakeLock to turn screen ON immediately
+        // 1. 如果是严重警报且屏幕关闭，请求 WakeLock 立即打开屏幕
         if (severity.equals("CRITICAL", ignoreCase = true)) {
             wakeScreen()
         }
 
-        // 2. Prepare intent to open MainActivity when user taps the notification
+        // 2. 准备用户点击通知时打开 MainActivity 的意图
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("ALERT_ID", id)
@@ -134,7 +134,7 @@ class NotificationOrchestrator(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 3. Resolve channel & styling based on severity
+        // 3. 根据警报级别解析通道和样式
         val channelId = when (severity.uppercase()) {
             "CRITICAL" -> CHANNEL_CRITICAL
             "WARNING" -> CHANNEL_WARNING
@@ -157,18 +157,18 @@ class NotificationOrchestrator(private val context: Context) {
             )
 
         if (severity.uppercase() == "CRITICAL") {
-            builder.setFullScreenIntent(pendingIntent, true) // Force popup on top of current screen
-            builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // Make visible on lockscreen
+            builder.setFullScreenIntent(pendingIntent, true) // 强制在当前屏幕上方弹出
+            builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 在锁屏上可见
         }
 
         notificationManager.notify(id.hashCode(), builder.build())
     }
 
     /**
-     * Maps a HomeOS notification payload to a native alert.
-     * Backend shape: { id, level, message, entityId, source, read, createdAt }
+     * 将 HomeOS 通知载荷映射到原生警报。
+     * 后端数据结构: { id, level, message, entityId, source, read, createdAt }
      */
-    fun triggerFromHomeOsPayload(payload: org.json.JSONObject) {
+    fun triggerFromHomeOSPayload(payload: org.json.JSONObject) {
         val id = payload.optString("id", System.currentTimeMillis().toString())
         val level = payload.optString("level", "info")
         val message = payload.optString("message", "")
@@ -183,8 +183,8 @@ class NotificationOrchestrator(private val context: Context) {
     }
 
     /**
-     * Maps push payload key-value data (FCM/HMS) to a native alert.
-     * Supports HomeOS fields (level, entityId) and legacy keys (severity, cameraEntityId).
+     * 将推送载荷键值数据（FCM/HMS）映射到原生警报。
+     * 支持 HomeOS 字段（level, entityId）和遗留键（severity, cameraEntityId）。
      */
     fun triggerFromPushData(data: Map<String, String>) {
         val id = data["id"] ?: System.currentTimeMillis().toString()
@@ -218,14 +218,14 @@ class NotificationOrchestrator(private val context: Context) {
     }
 
     /**
-     * Cancels an active system notification.
+     * 取消活动的系统通知。
      */
     fun cancelNotification(id: String) {
         notificationManager.cancel(id.hashCode())
     }
 
     /**
-     * Point-of-entry to forcefully point-light the tablet screen (WakeLock).
+     * 强制点亮平板屏幕的入口方法（使用 WakeLock）。
      */
     private fun wakeScreen() {
         try {
@@ -235,19 +235,19 @@ class NotificationOrchestrator(private val context: Context) {
                         PowerManager.ON_AFTER_RELEASE,
                 "HomeOS:EmergencyWakeScreen"
             )
-            // Acquire wake lock for a brief period to turn the screen on, then release immediately
+            // 获取唤醒锁一小段时间来打开屏幕，然后立即释放
             wakeLock.acquire(30000L)
-            // ON_AFTER_RELEASE keeps the screen on briefly after release, so we release right away
+            // ON_AFTER_RELEASE 标志会在释放后短暂保持屏幕开启，因此我们立即释放
             try {
                 if (wakeLock.isHeld) {
                     wakeLock.release()
                 }
             } catch (e: Exception) {
-                Log.w("AuraOrchestrator", "WakeLock release failed (may already be released): ${e.message}")
+                Log.w("Orchestrator", "WakeLock 释放失败（可能已释放）: ${e.message}")
             }
-            Log.d("AuraOrchestrator", "WakeLock acquired and released. Screen turned on.")
+            Log.d("Orchestrator", "WakeLock 获取并释放。屏幕已打开。")
         } catch (e: Exception) {
-            Log.e("AuraOrchestrator", "Failed to acquire screen WakeLock: ${e.message}")
+            Log.e("Orchestrator", "获取屏幕唤醒锁失败: ${e.message}")
         }
     }
 }

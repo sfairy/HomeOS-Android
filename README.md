@@ -1,10 +1,10 @@
-# 📱 HomeOS Android Companion
+# 📱 HomeOS 安卓伴侣端
 
 > 工业级安卓伴侣与壁挂式大屏 Kiosk 控制端 / Industrial-grade Android Companion & Wall-mounted Kiosk Display Wrapper.
 
-[![Platform](https://img.shields.io/badge/Platform-Android%208.0+-00C853?style=for-the-badge&logo=android)](https://developer.android.com)
-[![Build](https://img.shields.io/badge/Build-Gradle%20Kotlin%20DSL-6200EE?style=for-the-badge&logo=gradle)](https://gradle.org)
-[![Version](https://img.shields.io/badge/Version-2026.06.15.07-FF1744?style=for-the-badge)](https://github.com/pcskycn/HomeOS-Android)
+[![平台](https://img.shields.io/badge/Platform-Android%208.0+-00C853?style=for-the-badge&logo=android)](https://developer.android.com)
+[![构建](https://img.shields.io/badge/Build-Gradle%20Kotlin%20DSL-6200EE?style=for-the-badge&logo=gradle)](https://gradle.org)
+[![版本](https://img.shields.io/badge/Version-2026.06.15.07-FF1744?style=for-the-badge)](https://github.com/pcskycn/HomeOS-Android)
 
 `HomeOS-Android` 是专为 **HomeOS 智能家居管理终端** 量身打造的高性能原生 Kotlin 容器。它不仅是一个高度加速的 Web 容器，更是一个集成了局域网智能漫游、多通道云推送（FCM / 华为 HMS）、硬件控制和断网自愈能力的工业级控制中心。
 
@@ -59,10 +59,10 @@ HomeOSAPP/
         │   └── values-zh-rTW/   # 繁体中文字符串
         └── java/com/homeos/app/
             ├── MainActivity.kt          # 主界面、WebView 容器、手势拦截
-            ├── HomeOsAuth.kt            # Cookie 鉴权与登录辅助
-            ├── AuraSocketService.kt     # 后台通知轮询守护服务
-            ├── AuraFcmService.kt        # Google FCM 推送服务
-            ├── AuraHmsService.kt        # 华为 HMS 推送服务
+            ├── HomeOSAuth.kt            # Cookie 鉴权与登录辅助
+            ├── SocketService.kt     # 后台通知轮询守护服务
+            ├── FcmService.kt        # Google FCM 推送服务
+            ├── HmsService.kt        # 华为 HMS 推送服务
             ├── NetworkRoamingManager.kt # 局域网/外网双通道漫游引擎
             ├── NotificationOrchestrator.kt # 报警分发、显示唤醒与静音绕过
             ├── BootReceiver.kt          # 开机自启广播接收器
@@ -129,7 +129,7 @@ app/build/outputs/apk/release/app-release.apk
 
 ## 🔒 跨端桥接协议 / JS Bridge Specification
 
-伴侣端向 Web 前端自动注入 `window.AuraNative` 对象，支持以下原生交互：
+伴侣端向 Web 前端自动注入 `window.Native` 对象，支持以下原生交互：
 
 | 方法 | 描述 | 返回值 |
 |------|------|--------|

@@ -10,7 +10,7 @@ import java.net.URL
  * HomeOS 后端认证工具类
  * 服务器使用 HttpOnly Cookie 认证方式（auth_token + csrf_token），而非 JSON access_token
  */
-data class HomeOsLoginResult(
+data class HomeOSLoginResult(
     val success: Boolean,           // 登录是否成功
     val authToken: String = "",     // 认证令牌
     val csrfToken: String = "",     // CSRF 令牌
@@ -20,7 +20,7 @@ data class HomeOsLoginResult(
     val errorMessage: String? = null // 错误信息
 )
 
-object HomeOsAuth {
+object HomeOSAuth {
     const val KEY_AUTH_TOKEN = "auth_token"  // 认证令牌存储键名
     const val KEY_CSRF_TOKEN = "csrf_token"  // CSRF 令牌存储键名
     const val APP_USER_AGENT = "HomeOSApp/2026.06.15.07 (Android; Mobile)"  // 应用用户代理
@@ -32,7 +32,7 @@ object HomeOsAuth {
      * @param pass 密码
      * @return 登录结果对象
      */
-    fun performLogin(baseUrl: String, user: String, pass: String): HomeOsLoginResult {
+    fun performLogin(baseUrl: String, user: String, pass: String): HomeOSLoginResult {
         var connection: HttpURLConnection? = null
         return try {
             // 清理 URL 末尾的斜杠
@@ -66,7 +66,7 @@ object HomeOsAuth {
 
             // 检查 HTTP 状态码
             if (responseCode !in 200..299) {
-                return HomeOsLoginResult(
+                return HomeOSLoginResult(
                     success = false,
                     errorMessage = "HTTP $responseCode"
                 )
@@ -77,7 +77,7 @@ object HomeOsAuth {
             
             // 检查是否需要 MFA 验证
             if (jsonObj?.optBoolean("requiresMfa", false) == true) {
-                return HomeOsLoginResult(
+                return HomeOSLoginResult(
                     success = false,
                     requiresMfa = true,
                     username = jsonObj.optString("username", user),
@@ -88,14 +88,14 @@ object HomeOsAuth {
             // 从响应头提取 Cookie
             val (authToken, csrfToken) = extractCookiesFromConnection(connection)
             if (authToken.isEmpty()) {
-                return HomeOsLoginResult(
+                return HomeOSLoginResult(
                     success = false,
                     errorMessage = "缺少 auth_token cookie"
                 )
             }
 
             // 返回成功结果
-            HomeOsLoginResult(
+            HomeOSLoginResult(
                 success = true,
                 authToken = authToken,
                 csrfToken = csrfToken,
@@ -104,7 +104,7 @@ object HomeOsAuth {
             )
         } catch (e: Exception) {
             // 捕获异常并返回失败结果
-            HomeOsLoginResult(success = false, errorMessage = e.message)
+            HomeOSLoginResult(success = false, errorMessage = e.message)
         } finally {
             // 确保关闭连接
             connection?.disconnect()

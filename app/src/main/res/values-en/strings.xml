@@ -37,21 +37,6 @@
     <string name="btn_retry_now">Retry Now</string>
     <string name="content_desc_warning">Warning</string>
 
-    <!-- OTA Upgrade Screen -->
-    <string name="system_upgrade">System Upgrade</string>
-    <string name="downloading_update">Downloading HomeOS Kiosk Update…</string>
-    <string name="download_connecting">Connecting…</string>
-    <string name="download_initializing">Initializing download…</string>
-    <string name="download_retry_accelerator">Direct failed. Initializing accelerator channel…</string>
-    <string name="download_retrying">Retrying…</string>
-    <string name="download_failed_dual">Upgrade download failed after dual-channel attempts.</string>
-    <string name="download_ota_package">Downloading OTA package…</string>
-    <string name="download_downloading">Downloading…</string>
-    <string name="spec_current_version">Active Version</string>
-    <string name="spec_latest_version">Latest Version</string>
-    <string name="spec_package_size">Package Size</string>
-    <string name="ota_notes_default">General bug fixes and system performance optimizations.</string>
-
     <!-- Misc -->
     <string name="export_save_config">Export &amp; Save Configuration</string>
     <string name="export_failed">Export failed: %1$s</string>

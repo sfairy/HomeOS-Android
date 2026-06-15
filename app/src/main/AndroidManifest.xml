@@ -49,14 +49,14 @@
 
         <!-- Foreground Service for background notification polling -->
         <service
-            android:name=".AuraSocketService"
+            android:name=".SocketService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
 
         <!-- Google Firebase Cloud Messaging Service -->
         <service
-            android:name=".AuraFcmService"
+            android:name=".FcmService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
@@ -65,7 +65,7 @@
 
         <!-- Huawei HMS Push Kit Service -->
         <service
-            android:name=".AuraHmsService"
+            android:name=".HmsService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.huawei.push.action.MESSAGING_EVENT" />
