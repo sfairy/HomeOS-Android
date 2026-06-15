@@ -29,6 +29,13 @@ class BootReceiver : BroadcastReceiver() {
                 return
             }
 
+            // Strict check: only start service if device has been configured
+            val isConfigured = sharedPreferences.getBoolean("is_configured", false)
+            if (!isConfigured) {
+                Log.w("AuraBootReceiver", "Device not configured yet. Aborting auto-start of services on boot.")
+                return
+            }
+
             val lanUrl = sharedPreferences.getString("server_lan_url", "http://10.0.0.90:8501") ?: "http://10.0.0.90:8501"
             val authToken = HomeOsAuth.loadAuthToken(sharedPreferences)
             val csrfToken = HomeOsAuth.loadCsrfToken(sharedPreferences)

@@ -502,7 +502,9 @@ class MainActivity : AppCompatActivity() {
         updateScreenLocking()
         
         // Recreate the activity to apply language changes instantly
-        recreate()
+        if (!isFinishing && !isDestroyed) {
+            recreate()
+        }
         
         // Restart the WebSocket background monitoring service with the new address
         startAuraServices()
@@ -1109,8 +1111,12 @@ class MainActivity : AppCompatActivity() {
                 apply()
             }
             HomeOsAuth.clearAuthTokens(sharedPreferences)
+            // Stop background WebSocket service to free resources
+            stopService(Intent(this, AuraSocketService::class.java))
             clearAppCacheAndWebView(this)
-            recreate()
+            if (!isFinishing && !isDestroyed) {
+                recreate()
+            }
         }
 
         binding.btnWipeData.setOnClickListener {
@@ -1122,8 +1128,12 @@ class MainActivity : AppCompatActivity() {
                 apply()
             }
             HomeOsAuth.clearAuthTokens(sharedPreferences)
+            // Stop background WebSocket service to free resources
+            stopService(Intent(this, AuraSocketService::class.java))
             clearAppCacheAndWebView(this)
-            recreate()
+            if (!isFinishing && !isDestroyed) {
+                recreate()
+            }
         }
     }
 
@@ -1468,12 +1478,12 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Clears all application caches, WebView databases, and session cookies for a clean state.
+     * Uses standard WebKit APIs to avoid dangerous disk operations that can cause SIGSEGV crashes.
      */
     private fun clearAppCacheAndWebView(context: android.content.Context) {
         try {
-            // 1. Clear WebView standard cache
-            val webView = android.webkit.WebView(context)
-            webView.clearCache(true)
+            // 1. Clear WebView standard cache using existing instance
+            binding.webView.clearCache(true)
             
             // 2. Clear Session and Persistent Cookies
             val cookieManager = android.webkit.CookieManager.getInstance()
@@ -1487,15 +1497,17 @@ class MainActivity : AppCompatActivity() {
                 cookieSyncMngr.stopSync()
             }
             
-            // 3. Recursively clear internal files in App Caches Directory
+            // 3. Clear DOM Storage (localStorage/sessionStorage)
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            
+            // 4. Recursively clear internal files in App Caches Directory
             val cacheDir = context.cacheDir
             if (cacheDir != null && cacheDir.isDirectory) {
                 deleteDirContents(cacheDir)
             }
             
-            // 4. Remove Webview internal persistence databases
-            context.deleteDatabase("webview.db")
-            context.deleteDatabase("webviewCache.db")
+            // Note: Removed dangerous disk file deletion (webview.db, webviewCache.db)
+            // to prevent Chromium native SIGSEGV crashes when WebView is active
             
             android.widget.Toast.makeText(
                 context,
