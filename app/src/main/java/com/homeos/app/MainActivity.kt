@@ -576,6 +576,10 @@ class MainActivity : AppCompatActivity() {
             // Allow Zoom if needed on smaller displays
             builtInZoomControls = false
             displayZoomControls = false
+            
+            // Enable viewport scaling for responsive web pages
+            useWideViewPort = true
+            loadWithOverviewMode = true
         }
 
         // Inject the secure cross-platform bridge object
