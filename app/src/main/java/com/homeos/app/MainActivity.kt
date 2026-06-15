@@ -512,33 +512,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 等比缩放（纯原生 density 补偿）：WebView 铺满屏幕；
-     * 通过 setInitialScale(100/density) 使 1 CSS px = 1 物理像素，
-     * 从而 CSS 视口 = 屏幕物理像素数（本机 = 设计分辨率 3200×2136），页面 1:1 桌面布局铺满。
-     * 不依赖网页 viewport / cookie / 网络注入，必定生效。
+     * 在 onPageFinished 里通过 JS 设置 viewport width=设计宽度。
+     * 这是最可靠的方式：在页面 JS 上下文内直接执行，无需网络请求/Cookie/拦截，
+     * 配合 loadWithOverviewMode 让 WebView 自动等比缩放铺满屏幕。
      */
+    private fun injectViewportJs(webView: WebView?) {
+        val (designW, _) = resolveDesignResolution()
+        val js = """
+            (function(){
+                var m = document.querySelector('meta[name="viewport"]');
+                if (!m) {
+                    m = document.createElement('meta');
+                    m.name = 'viewport';
+                    (document.head || document.documentElement).appendChild(m);
+                }
+                m.content = 'width=$designW';
+            })();
+        """.trimIndent()
+        webView?.evaluateJavascript(js, null)
+    }
+
     private fun applyTerminalScale(reloadPage: Boolean = false) {
         val container = binding.mainRoot
         val screenW = if (container.width > 0) container.width else resources.displayMetrics.widthPixels
         val screenH = if (container.height > 0) container.height else resources.displayMetrics.heightPixels
         currentTerminalScale = computeTerminalScale(screenW, screenH)
-
-        val lp = binding.webView.layoutParams as android.widget.FrameLayout.LayoutParams
-        if (lp.width != android.widget.FrameLayout.LayoutParams.MATCH_PARENT ||
-            lp.height != android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-        ) {
-            lp.width = android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-            lp.height = android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-            binding.webView.layoutParams = lp
-        }
-        binding.webView.scaleX = 1f
-        binding.webView.scaleY = 1f
-
-        // density 补偿：使 CSS 视口宽度 = WebView 物理像素宽度 = 设计分辨率
-        val density = resources.displayMetrics.density
-        val initialScalePercent = Math.round(100f / density).coerceIn(1, 1000)
-        binding.webView.setInitialScale(initialScalePercent)
-
         updateWebViewZoomSettings()
     }
 
@@ -559,10 +557,8 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
-            // 关闭自适应视口：忽略网页自带 viewport，用 WebView 物理宽度作为视口；
-            // 配合 setInitialScale(100/density) 使 CSS 视口 = 物理像素数(=设计分辨率)，1:1 铺满
-            useWideViewPort = false
-            loadWithOverviewMode = false
+            useWideViewPort = true
+            loadWithOverviewMode = true
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
@@ -616,6 +612,8 @@ class MainActivity : AppCompatActivity() {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
                     applyTerminalScale(reloadPage = false)
+                    // 注入 viewport：在页面 JS 上下文内直接修改，最可靠，不受 Cookie/gzip/拦截影响
+                    injectViewportJs(view)
                 }
             }
 
