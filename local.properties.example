@@ -1,0 +1,7 @@
+# Copy to local.properties and adjust paths for your machine.
+# Android Studio usually auto-generates this file on first import.
+
+sdk.dir=C\:\\Users\\YOUR_USER\\AppData\\Local\\Android\\Sdk
+
+# Optional: force Gradle to use JDK 17 (required; JDK 25 is not supported yet)
+# org.gradle.java.home=C\:\\Program Files\\Eclipse Adoptium\\jdk-17.0.x-hotspot

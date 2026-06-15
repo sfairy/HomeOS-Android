@@ -1,0 +1,76 @@
+<resources>
+    <string name="app_name">智能家居</string>
+    <string name="app_version">2026.06.15.07</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">HomeOS 伴侣端配置</string>
+    <string name="settings_desc">配置服务器路由与运行模式</string>
+    <string name="server_lan_url">局域网服务器地址</string>
+    <string name="server_wan_url">公网服务器地址</string>
+    <string name="username">用户名</string>
+    <string name="password">密码</string>
+    <string name="device_mode">设备工作模式</string>
+    <string name="mode_kiosk">挂墙大屏模式（屏幕常亮）</string>
+    <string name="mode_companion">手机伴侣模式（系统息屏）</string>
+    <string name="system_language">系统语言</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">EN</string>
+    <string name="cancel">取消</string>
+    <string name="save_settings">保存配置</string>
+    <string name="save_anyway">强制保存</string>
+    <string name="verifying_server">正在验证服务器连接和凭据…</string>
+    <string name="verification_success">验证成功！</string>
+    <string name="verification_failed">连接或身份验证失败。请检查输入，或点击「强制保存」跳过。</string>
+    <string name="lan_url_required">局域网地址不能为空</string>
+
+    <!-- Connection States -->
+    <string name="connecting">正在连接 HomeOS 服务…</string>
+    <string name="sub_loading_detecting">正在检测局域网智能家居网络…</string>
+    <string name="checking_network_health">正在检测网络状态与服务器可用性…</string>
+    <string name="error_no_server_url">错误：未配置或无法访问服务器地址</string>
+    <string name="lan_route_online">局域网服务器在线，正在加载本地配置…</string>
+    <string name="wan_route_online">公网服务器在线，正在加载云端配置…</string>
+    <string name="connection_failed">连接已断开</string>
+    <string name="reconnecting">正在尝试自动重连（3 秒内）…</string>
+    <string name="check_network">请检查您的服务器配置或网络连接状态。</string>
+    <string name="btn_configure_server">配置服务器</string>
+    <string name="btn_retry_now">立即重试</string>
+    <string name="content_desc_warning">警告</string>
+
+    <!-- OTA Upgrade Screen -->
+    <string name="system_upgrade">系统升级</string>
+    <string name="downloading_update">正在下载 HomeOS 升级包…</string>
+    <string name="download_connecting">连接中…</string>
+    <string name="download_initializing">正在初始化下载…</string>
+    <string name="download_retry_accelerator">直连失败，正在切换加速通道…</string>
+    <string name="download_retrying">重试中…</string>
+    <string name="download_failed_dual">升级包下载失败（已尝试双通道）。</string>
+    <string name="download_ota_package">正在下载 OTA 升级包…</string>
+    <string name="download_downloading">下载中…</string>
+    <string name="spec_current_version">当前版本</string>
+    <string name="spec_latest_version">最新版本</string>
+    <string name="spec_package_size">升级包体积</string>
+    <string name="ota_notes_default">修复部分已知问题并提升系统稳定性</string>
+
+    <!-- Misc -->
+    <string name="export_save_config">导出并保存配置文件</string>
+    <string name="export_failed">导出失败：%1$s</string>
+    <string name="mfa_required_suffix">（需要 MFA 验证）</string>
+    <string name="enter_demo_failed">进入演示系统失败：</string>
+    <string name="unknown_error">未知错误</string>
+    <string name="install_allow_unknown">请允许安装未知来源应用后重试</string>
+    <string name="install_failed">安装失败：%1$s</string>
+    <string name="cache_cleared">伴侣终端已完成缓存清理与安全重置</string>
+    <string name="notification_monitor_title">HomeOS 监控</string>
+    <string name="notification_monitor_text">正在监听智能家居告警…</string>
+    <string name="channel_service_name">HomeOS 后台服务</string>
+    <string name="channel_service_desc">保持后台通知轮询与告警同步</string>
+    <string name="channel_info_name">系统广播</string>
+    <string name="channel_info_desc">非侵入式系统通知与更新</string>
+    <string name="channel_warning_name">设备告警</string>
+    <string name="channel_warning_desc">电池电量低或设备离线等告警</string>
+    <string name="channel_critical_name">紧急 / 门铃告警</string>
+    <string name="channel_critical_desc">实时紧急告警，可绕过勿扰模式</string>
+    <string name="push_cloud_update">HomeOS 云推送</string>
+    <string name="push_hms_update">HomeOS 华为推送</string>
+</resources>

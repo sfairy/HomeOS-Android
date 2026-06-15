@@ -1,0 +1,76 @@
+<resources>
+    <string name="app_name">Smart Home</string>
+    <string name="app_version">2026.06.15.07</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">HomeOS Companion Settings</string>
+    <string name="settings_desc">Configure server routing and operational modes</string>
+    <string name="server_lan_url">Local LAN Server URL</string>
+    <string name="server_wan_url">Cloud WAN Server URL</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="device_mode">Device Work Mode</string>
+    <string name="mode_kiosk">Wall Kiosk (Keep Screen On)</string>
+    <string name="mode_companion">Companion (Mobile)</string>
+    <string name="system_language">System Language</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">EN</string>
+    <string name="cancel">Cancel</string>
+    <string name="save_settings">Save Config</string>
+    <string name="save_anyway">Save Anyway</string>
+    <string name="verifying_server">Verifying server connection and credentials…</string>
+    <string name="verification_success">Verification successful!</string>
+    <string name="verification_failed">Failed to connect or authenticate. Check your inputs or press \'Save Anyway\' to force save.</string>
+    <string name="lan_url_required">LAN URL is required</string>
+
+    <!-- Connection States -->
+    <string name="connecting">Connecting to HomeOS Service…</string>
+    <string name="sub_loading_detecting">Detecting local smart home network…</string>
+    <string name="checking_network_health">Checking network health and server availability…</string>
+    <string name="error_no_server_url">Error: No server URL configured or reachable.</string>
+    <string name="lan_route_online">LAN server online. Launching local profile…</string>
+    <string name="wan_route_online">WAN server online. Launching cloud profile…</string>
+    <string name="connection_failed">Connection Lost</string>
+    <string name="reconnecting">Attempting auto-recovery in 3s…</string>
+    <string name="check_network">Please verify your server address or network connection.</string>
+    <string name="btn_configure_server">Configure Server</string>
+    <string name="btn_retry_now">Retry Now</string>
+    <string name="content_desc_warning">Warning</string>
+
+    <!-- OTA Upgrade Screen -->
+    <string name="system_upgrade">System Upgrade</string>
+    <string name="downloading_update">Downloading HomeOS Kiosk Update…</string>
+    <string name="download_connecting">Connecting…</string>
+    <string name="download_initializing">Initializing download…</string>
+    <string name="download_retry_accelerator">Direct failed. Initializing accelerator channel…</string>
+    <string name="download_retrying">Retrying…</string>
+    <string name="download_failed_dual">Upgrade download failed after dual-channel attempts.</string>
+    <string name="download_ota_package">Downloading OTA package…</string>
+    <string name="download_downloading">Downloading…</string>
+    <string name="spec_current_version">Active Version</string>
+    <string name="spec_latest_version">Latest Version</string>
+    <string name="spec_package_size">Package Size</string>
+    <string name="ota_notes_default">General bug fixes and system performance optimizations.</string>
+
+    <!-- Misc -->
+    <string name="export_save_config">Export &amp; Save Configuration</string>
+    <string name="export_failed">Export failed: %1$s</string>
+    <string name="mfa_required_suffix"> (MFA required)</string>
+    <string name="enter_demo_failed">Failed to enter demo: </string>
+    <string name="unknown_error">Unknown error</string>
+    <string name="install_allow_unknown">Please allow unknown app installation and retry</string>
+    <string name="install_failed">Installation failed: %1$s</string>
+    <string name="cache_cleared">Cache cleared and node successfully reset</string>
+    <string name="notification_monitor_title">HomeOS Monitor</string>
+    <string name="notification_monitor_text">Listening for smart home alerts…</string>
+    <string name="channel_service_name">HomeOS Background Service</string>
+    <string name="channel_service_desc">Keeps background notification polling active.</string>
+    <string name="channel_info_name">System Broadcasts</string>
+    <string name="channel_info_desc">Non-intrusive system notifications and updates.</string>
+    <string name="channel_warning_name">Device Alerts</string>
+    <string name="channel_warning_desc">Critical alerts about battery level or offline status.</string>
+    <string name="channel_critical_name">Emergency / Doorbell Alarms</string>
+    <string name="channel_critical_desc">Real-time emergency alarms that bypass DND settings.</string>
+    <string name="push_cloud_update">HomeOS Cloud Push</string>
+    <string name="push_hms_update">HomeOS HMS Push</string>
+</resources>

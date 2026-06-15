@@ -1,0 +1,502 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_obsidian"
+    tools:context=".MainActivity">
+
+    <!-- High Performance Web View -->
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg_obsidian"
+        android:visibility="invisible" />
+
+    <!-- Neon Cyberpunk Splash / Loading Overlay -->
+    <RelativeLayout
+        android:id="@+id/loadingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg_obsidian"
+        android:gravity="center">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <!-- Elegant circular neon progress indicator -->
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleLarge"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:indeterminateTint="@color/neon_teal" />
+
+            <TextView
+                android:id="@+id/loadingText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="@string/connecting"
+                android:textColor="@color/neon_teal"
+                android:textSize="18sp"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.05" />
+            
+            <TextView
+                android:id="@+id/subLoadingText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/sub_loading_detecting"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </RelativeLayout>
+
+    <!-- Custom High-End Kiosk Server Configuration Modal (Hidden by Default) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/settingsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#DD0A0B0E"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="24dp"
+            android:layout_marginVertical="24dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="24dp"
+            app:cardBackgroundColor="@color/bg_charcoal"
+            app:layout_constraintWidth_max="480dp"
+            app:layout_constrainedHeight="true"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none"
+                android:overScrollMode="never">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="28dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/txtSettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/settings_title"
+                        android:textColor="@color/neon_teal"
+                        android:textSize="20sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:letterSpacing="0.02" />
+
+                    <!-- Compact Language Switcher Segmented Toggle -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:background="#15FFFFFF"
+                        android:padding="2dp">
+
+                        <TextView
+                            android:id="@+id/btnLangZhToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="简"
+                            android:textColor="@color/black"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:background="@color/neon_teal"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="4dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+
+                        <TextView
+                            android:id="@+id/btnLangZhTwToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="繁"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:background="@android:color/transparent"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="4dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+
+                        <TextView
+                            android:id="@+id/btnLangEnToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="EN"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:background="@android:color/transparent"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="4dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/txtSettingsDesc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/settings_desc"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="#1AFFFFFF" />
+
+                <!-- LAN Address Input -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutLanUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/server_lan_url"
+                    android:textColorHint="@color/text_secondary"
+                    app:hintTextColor="@color/neon_teal"
+                    app:boxStrokeColor="@color/neon_teal"
+                    app:placeholderText="http://10.0.0.90:8125"
+                    app:placeholderTextColor="@color/text_secondary"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputLanUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_primary"
+                        android:inputType="textUri" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- WAN Address Input -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutWanUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="@string/server_wan_url"
+                    android:textColorHint="@color/text_secondary"
+                    app:hintTextColor="@color/neon_teal"
+                    app:boxStrokeColor="@color/neon_teal"
+                    app:placeholderText="https://grid.yourdomain.com"
+                    app:placeholderTextColor="@color/text_secondary"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputWanUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_primary"
+                        android:inputType="textUri" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Username Input -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutUsername"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="@string/username"
+                    android:textColorHint="@color/text_secondary"
+                    app:hintTextColor="@color/neon_teal"
+                    app:boxStrokeColor="@color/neon_teal"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputUsername"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_primary"
+                        android:inputType="text" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Password Input -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutPassword"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="@string/password"
+                    android:textColorHint="@color/text_secondary"
+                    app:hintTextColor="@color/neon_teal"
+                    app:boxStrokeColor="@color/neon_teal"
+                    app:passwordToggleEnabled="true"
+                    app:passwordToggleTint="@color/neon_teal"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputPassword"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/text_primary"
+                        android:inputType="textPassword" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Connection Verification Status Label -->
+                <TextView
+                    android:id="@+id/txtVerificationStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:textColor="#FF5555"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    android:gravity="center_horizontal" />
+
+                <!-- Configured Mode Selection -->
+                <TextView
+                    android:id="@+id/txtDeviceModeLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="@string/device_mode"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <RadioGroup
+                    android:id="@+id/radioGroupMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/radioKiosk"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/mode_kiosk"
+                        android:textColor="@color/text_primary"
+                        android:buttonTint="@color/neon_teal"
+                        android:checked="true" />
+
+                    <RadioButton
+                        android:id="@+id/radioCompanion"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="24dp"
+                        android:text="@string/mode_companion"
+                        android:textColor="@color/text_primary"
+                        android:buttonTint="@color/neon_teal" />
+                </RadioGroup>
+
+
+
+                <!-- Buttons -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="28dp"
+                    android:orientation="horizontal"
+                    android:gravity="end">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnQuickDemo"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="一键进入演示系统"
+                        android:textColor="@color/neon_teal"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:strokeColor="@color/neon_teal"
+                        app:strokeWidth="1.5dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_media_play"
+                        app:iconTint="@color/neon_teal"
+                        app:iconPadding="4dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnExitDemo"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="一键退出演示系统"
+                        android:textColor="#FF3333"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:strokeColor="#FF3333"
+                        app:strokeWidth="1.5dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_menu_close_clear_cancel"
+                        app:iconTint="#FF3333"
+                        app:iconPadding="4dp"
+                        android:visibility="gone" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnWipeData"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="擦除数据并退出"
+                        android:textColor="#FF3333"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:strokeColor="#FF3333"
+                        app:strokeWidth="1.5dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_menu_delete"
+                        app:iconTint="#FF3333"
+                        app:iconPadding="4dp"
+                        android:visibility="gone" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <Button
+                        android:id="@+id/btnCancelSettings"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/cancel"
+                        android:textColor="@color/text_secondary" />
+
+                    <Button
+                        android:id="@+id/btnSaveSettings"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:text="@string/save_settings"
+                        android:backgroundTint="@color/neon_teal"
+                        android:textColor="@color/black" />
+                </LinearLayout>
+            </LinearLayout>
+            </ScrollView>
+        </androidx.cardview.widget.CardView>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Neon Cyberpunk OTA Download Progress Overlay -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/downloadOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#ED0A0B0E"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="24dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="24dp"
+            app:cardBackgroundColor="@color/bg_charcoal"
+            app:layout_constraintWidth_max="450dp"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="28dp"
+                android:gravity="center">
+
+                <TextView
+                    android:id="@+id/downloadTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/system_upgrade"
+                    android:textColor="@color/neon_teal"
+                    android:textSize="20sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.02" />
+
+                <TextView
+                    android:id="@+id/downloadStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/downloading_update"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:layout_marginBottom="8dp">
+
+                    <ProgressBar
+                        android:id="@+id/downloadProgressBar"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="12dp"
+                        android:max="100"
+                        android:progress="0"
+                        android:progressTint="@color/neon_teal"
+                        android:progressBackgroundTint="#2AFFFFFF" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:id="@+id/downloadPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0%"
+                        android:textColor="@color/neon_teal"
+                        android:textSize="14sp"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:id="@+id/downloadSpeed"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/download_connecting"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</FrameLayout>
