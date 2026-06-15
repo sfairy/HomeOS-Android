@@ -135,12 +135,14 @@ app/build/outputs/apk/release/app-release.apk
 |------|------|--------|
 | `getHardwareFingerprint()` | 获取由 `ANDROID_ID` 进行 SHA-256 加密后的硬件唯一标识（HWID） | `string` |
 | `getPushToken()` | 获取当前活跃的 FCM / HMS 推送 Token | `string` |
-| `getDeviceInfo()` | 获取设备信息（型号、厂商、系统版本等） | `JSON string` |
+| `getDeviceInfo()` | 获取设备信息（型号、厂商、系统版本、屏幕像素、设计基准分辨率、等比缩放因子等） | `JSON string` |
 | `getAppVersion()` | 获取应用版本号 | `string` |
 | `getAppMode()` | 获取当前运行模式（kiosk/companion） | `string` |
 | `playAlertSound(severity)` | 根据警报级别播放对应声调 | `void` |
 | `acknowledgeAlert(alertId)` | 取消指定的系统通知 | `void` |
 | `startUpgrade(downloadUrl)` | 触发 OTA 升级流程 | `void` |
+
+`getDeviceInfo()` 额外返回字段：`screenWidthPx`、`screenHeightPx`、`density`、`densityDpi`、`designWidth`（默认 3200）、`designHeight`（默认 2136）、`scaleFactor`（终端等比缩放因子）。
 
 ---
 

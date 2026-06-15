@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.graphics.Color
 import android.media.RingtoneManager
 import android.net.Uri
@@ -17,6 +18,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -62,6 +64,17 @@ class MainActivity : AppCompatActivity() {
 
     private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
     private val FILECHOOSER_RESULTCODE = 10001
+
+    private var currentTerminalScale: TerminalScale? = null
+
+    private data class TerminalScale(
+        val designWidth: Int,
+        val designHeight: Int,
+        val screenWidthPx: Int,
+        val screenHeightPx: Int,
+        val scaleFactor: Float,
+        val initialScalePercent: Int
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -468,6 +481,93 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun resolveDesignResolution(): Pair<Int, Int> {
+        val w = sharedPreferences.getInt("design_width", 3200)
+        val h = sharedPreferences.getInt("design_height", 2136)
+        return w to h
+    }
+
+    private fun computeTerminalScale(viewWidth: Int, viewHeight: Int): TerminalScale {
+        val (designW, designH) = resolveDesignResolution()
+        val metrics = resources.displayMetrics
+        val w = if (viewWidth > 0) viewWidth else metrics.widthPixels
+        val h = if (viewHeight > 0) viewHeight else metrics.heightPixels
+        val scale = minOf(w.toFloat() / designW, h.toFloat() / designH)
+        return TerminalScale(
+            designW,
+            designH,
+            w,
+            h,
+            scale,
+            (scale * 100).toInt().coerceIn(1, 500)
+        )
+    }
+
+    private fun buildViewportMeta(scale: TerminalScale): String {
+        val scaleStr = String.format(java.util.Locale.US, "%.4f", scale.scaleFactor)
+        val userScalable = if (isKioskMode) "no" else "yes"
+        return if (isKioskMode) {
+            """<meta name="viewport" content="width=${scale.designWidth}, initial-scale=$scaleStr, maximum-scale=$scaleStr, minimum-scale=$scaleStr, user-scalable=$userScalable">"""
+        } else {
+            """<meta name="viewport" content="width=${scale.designWidth}, initial-scale=$scaleStr, user-scalable=$userScalable">"""
+        }
+    }
+
+    private fun buildViewportContent(scale: TerminalScale): String {
+        val scaleStr = String.format(java.util.Locale.US, "%.4f", scale.scaleFactor)
+        val userScalable = if (isKioskMode) "no" else "yes"
+        return if (isKioskMode) {
+            "width=${scale.designWidth}, initial-scale=$scaleStr, maximum-scale=$scaleStr, minimum-scale=$scaleStr, user-scalable=$userScalable"
+        } else {
+            "width=${scale.designWidth}, initial-scale=$scaleStr, user-scalable=$userScalable"
+        }
+    }
+
+    private fun updateWebViewZoomSettings() {
+        binding.webView.settings.apply {
+            setSupportZoom(!isKioskMode)
+            builtInZoomControls = !isKioskMode
+            displayZoomControls = false
+        }
+    }
+
+    private fun applyTerminalScale(reloadPage: Boolean = false) {
+        val scale = computeTerminalScale(binding.webView.width, binding.webView.height)
+        val previous = currentTerminalScale
+        currentTerminalScale = scale
+
+        binding.webView.setInitialScale(scale.initialScalePercent)
+        updateWebViewZoomSettings()
+
+        if (reloadPage && previous != null) {
+            val scaleDelta = kotlin.math.abs(previous.scaleFactor - scale.scaleFactor)
+            if (scaleDelta > 0.01f && !binding.webView.url.isNullOrEmpty()) {
+                binding.webView.reload()
+                return
+            }
+        }
+
+        if (!binding.webView.url.isNullOrEmpty() && !isErrorState) {
+            injectViewportViaJs(scale)
+        }
+    }
+
+    private fun injectViewportViaJs(scale: TerminalScale) {
+        val content = buildViewportContent(scale)
+        val js = """
+            (function() {
+                var meta = document.querySelector('meta[name="viewport"]');
+                if (!meta) {
+                    meta = document.createElement('meta');
+                    meta.name = 'viewport';
+                    (document.head || document.documentElement).appendChild(meta);
+                }
+                meta.content = '$content';
+            })();
+        """.trimIndent()
+        binding.webView.evaluateJavascript(js, null)
+    }
+
     /**
      * 加速 Chromium 引擎的核心配置。
      */
@@ -475,9 +575,6 @@ class MainActivity : AppCompatActivity() {
     private fun setupWebView() {
         binding.webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
-        val metrics = resources.displayMetrics
-        val cssWidth = (metrics.widthPixels / metrics.density).toInt()
-        
         binding.webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -490,13 +587,15 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
             loadWithOverviewMode = true
-            setSupportZoom(true)
-            builtInZoomControls = true
-            displayZoomControls = false
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
             }
+        }
+        updateWebViewZoomSettings()
+
+        binding.webView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applyTerminalScale(reloadPage = false)
         }
 
         // 注入 NativeBridge
@@ -540,6 +639,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isErrorState) {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
+                    applyTerminalScale(reloadPage = false)
                 }
             }
 
@@ -561,7 +661,7 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlRedirection(url)
             }
 
-            // 拦截主框架 HTML 响应，注入 viewport meta 标签强制桌面宽度渲染
+            // 拦截主框架 HTML 响应，注入 viewport meta 标签强制等比缩放渲染
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: WebResourceRequest?
@@ -571,23 +671,33 @@ class MainActivity : AppCompatActivity() {
                 val url = request.url.toString()
                 // 跳过非 HTTP/HTTPS 请求和资源文件请求
                 if (!url.startsWith("http")) return null
-                
+
                 return try {
                     val conn = URL(url).openConnection() as HttpURLConnection
                     conn.requestMethod = "GET"
                     conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
+                    val cookie = CookieManager.getInstance().getCookie(url)
+                    if (!cookie.isNullOrEmpty()) {
+                        conn.setRequestProperty("Cookie", cookie)
+                    }
                     conn.connectTimeout = 8000
                     conn.readTimeout = 8000
                     conn.connect()
 
                     val contentType = conn.contentType ?: "text/html"
+                    if (!contentType.contains("html", ignoreCase = true)) {
+                        conn.disconnect()
+                        return null
+                    }
+
                     val encoding = conn.contentEncoding ?: "UTF-8"
                     val bodyBytes = conn.inputStream.use { it.readBytes() }
                     var body = String(bodyBytes, charset(encoding))
-                    
-                    // 注入 viewport meta 标签，根据设备 CSS 像素宽度自适应渲染
-                    val viewportMeta = "<meta name=\"viewport\" content=\"width=$cssWidth\">"
-                    
+
+                    val scale = computeTerminalScale(binding.webView.width, binding.webView.height)
+                    currentTerminalScale = scale
+                    val viewportMeta = buildViewportMeta(scale)
+
                     // 如果页面已有 viewport meta，替换之；否则在 <head> 中插入
                     if (body.contains("name=\"viewport\"") || body.contains("name='viewport'")) {
                         body = body.replace(
@@ -599,9 +709,9 @@ class MainActivity : AppCompatActivity() {
                             Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
                         ) { "${it.value}$viewportMeta" }
                     }
-                    
+
                     android.webkit.WebResourceResponse(
-                        if (contentType.contains("html")) "text/html" else contentType,
+                        "text/html",
                         encoding,
                         body.byteInputStream(charset(encoding))
                     )
@@ -617,6 +727,8 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlRedirection(url)
             }
         }
+
+        applyTerminalScale(reloadPage = false)
     }
 
     /**
@@ -1681,6 +1793,11 @@ class MainActivity : AppCompatActivity() {
     /**
      * 防止系统返回按钮点击导致 Kiosk 外壳崩溃或关闭。
      */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyTerminalScale(reloadPage = false)
+    }
+
     override fun onBackPressed() {
         if (binding.settingsOverlay.visibility == View.VISIBLE) {
             toggleSettingsOverlay(false)
@@ -1720,6 +1837,11 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun getDeviceInfo(): String {
+            val scale = currentTerminalScale ?: computeTerminalScale(
+                binding.webView.width,
+                binding.webView.height
+            )
+            val metrics = resources.displayMetrics
             return JSONObject().apply {
                 put("model", Build.MODEL)
                 put("manufacturer", Build.MANUFACTURER)
@@ -1727,6 +1849,13 @@ class MainActivity : AppCompatActivity() {
                 put("appVersion", getAppVersion())
                 put("isKioskMode", isKioskMode)
                 put("platform", "android")
+                put("screenWidthPx", scale.screenWidthPx)
+                put("screenHeightPx", scale.screenHeightPx)
+                put("density", metrics.density.toDouble())
+                put("densityDpi", metrics.densityDpi)
+                put("designWidth", scale.designWidth)
+                put("designHeight", scale.designHeight)
+                put("scaleFactor", scale.scaleFactor.toDouble())
             }.toString()
         }
 
