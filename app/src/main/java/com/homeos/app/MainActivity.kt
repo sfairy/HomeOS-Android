@@ -473,9 +473,11 @@ class MainActivity : AppCompatActivity() {
      */
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun setupWebView() {
-        // 使用默认图层类型，避免 HARDWARE 层在某些设备上导致渲染异常
-        binding.webView.setLayerType(View.LAYER_TYPE_NONE, null)
+        binding.webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
+        val metrics = resources.displayMetrics
+        val cssWidth = (metrics.widthPixels / metrics.density).toInt()
+        
         binding.webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -484,32 +486,20 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             loadsImagesAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            
-            // 使用桌面版 User-Agent，确保服务端返回桌面布局（而非手机版页面）
             userAgentString = HomeOSAuth.APP_USER_AGENT
-            
-            // 允许自动播放直播流和摄像头画面
             mediaPlaybackRequiresUserGesture = false
-            
-            // 启用缩放控件（参考 Fully Kiosk Browser 方案）
+            useWideViewPort = true
+            loadWithOverviewMode = true
             setSupportZoom(true)
             builtInZoomControls = true
             displayZoomControls = false
-            
-            // 启用宽视口 + 概览模式，使页面等比缩放适配屏幕
-            useWideViewPort = true
-            loadWithOverviewMode = true
-            
-            // 固定文本缩放为 100%，防止系统字体缩放干扰页面布局
             textZoom = 100
-            
-            // 禁用算法暗化，防止 WebView 强制深色模式导致页面颜色异常
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
             }
         }
 
-        // 注入安全的跨平台桥接对象
+        // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
 
         // 支持文件下载（导出完整配置备份）
@@ -569,6 +559,58 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
                 return handleUrlRedirection(url)
+            }
+
+            // 拦截主框架 HTML 响应，注入 viewport meta 标签强制桌面宽度渲染
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): android.webkit.WebResourceResponse? {
+                // 仅处理主框架且为 HTML 文档的请求
+                if (request?.isForMainFrame != true) return null
+                val url = request.url.toString()
+                // 跳过非 HTTP/HTTPS 请求和资源文件请求
+                if (!url.startsWith("http")) return null
+                
+                return try {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    conn.connect()
+
+                    val contentType = conn.contentType ?: "text/html"
+                    val encoding = conn.contentEncoding ?: "UTF-8"
+                    val bodyBytes = conn.inputStream.use { it.readBytes() }
+                    var body = String(bodyBytes, charset(encoding))
+                    
+                    // 注入 viewport meta 标签，强制桌面宽度渲染
+                    val targetWidth = 1920
+                    val scale = String.format("%.2f", cssWidth.toFloat() / targetWidth)
+                    val viewportMeta = "<meta name=\"viewport\" content=\"width=$targetWidth, initial-scale=$scale\">"
+                    
+                    // 如果页面已有 viewport meta，替换之；否则在 <head> 中插入
+                    if (body.contains("name=\"viewport\"") || body.contains("name='viewport'")) {
+                        body = body.replace(
+                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
+                            viewportMeta
+                        )
+                    } else {
+                        body = body.replace(
+                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
+                        ) { "${it.value}$viewportMeta" }
+                    }
+                    
+                    android.webkit.WebResourceResponse(
+                        if (contentType.contains("html")) "text/html" else contentType,
+                        encoding,
+                        body.byteInputStream(charset(encoding))
+                    )
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "拦截 HTML 注入 viewport 失败: ${e.message}")
+                    null // 失败时回退到默认加载
+                }
             }
 
             @Deprecated("Deprecated in Java")
