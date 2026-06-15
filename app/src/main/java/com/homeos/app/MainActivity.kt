@@ -18,7 +18,6 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -503,15 +502,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun buildViewportMeta(scale: TerminalScale): String {
-        return """<meta name="viewport" content="${buildViewportContent(scale)}">"""
-    }
-
-    private fun buildViewportContent(scale: TerminalScale): String {
-        // WebView 内部以设计宽度 1:1 布局，整体缩放交由视图层 scaleX/scaleY 完成
-        return "width=${scale.designWidth}, user-scalable=no"
-    }
-
     private fun updateWebViewZoomSettings() {
         binding.webView.settings.apply {
             // 始终关闭手势缩放，避免破坏终端等比布局
@@ -533,6 +523,13 @@ class MainActivity : AppCompatActivity() {
         val scale = computeTerminalScale(screenW, screenH)
         currentTerminalScale = scale
 
+        // density 补偿：useWideViewPort=false 时 WebView 视口宽 = 物理宽 / (initialScale * density)。
+        // 令 initialScale = 1/density，可使 CSS 视口 = WebView 物理宽 = 设计宽度，实现桌面 1:1 布局。
+        val density = resources.displayMetrics.density
+        val initialScalePercent = Math.round(100f / density).coerceIn(1, 1000)
+        binding.webView.setInitialScale(initialScalePercent)
+
+        // WebView 物理 layout 固定为设计分辨率像素，整页以桌面尺寸渲染
         val lp = binding.webView.layoutParams as android.widget.FrameLayout.LayoutParams
         if (lp.width != scale.designWidth || lp.height != scale.designHeight ||
             lp.gravity != android.view.Gravity.CENTER
@@ -543,32 +540,13 @@ class MainActivity : AppCompatActivity() {
             binding.webView.layoutParams = lp
         }
 
+        // 视图层整体等比缩放并居中（contain），比例锁定不变形
         binding.webView.pivotX = scale.designWidth / 2f
         binding.webView.pivotY = scale.designHeight / 2f
         binding.webView.scaleX = scale.scaleFactor
         binding.webView.scaleY = scale.scaleFactor
 
         updateWebViewZoomSettings()
-
-        if (!binding.webView.url.isNullOrEmpty() && !isErrorState) {
-            injectViewportViaJs(scale)
-        }
-    }
-
-    private fun injectViewportViaJs(scale: TerminalScale) {
-        val content = buildViewportContent(scale)
-        val js = """
-            (function() {
-                var meta = document.querySelector('meta[name="viewport"]');
-                if (!meta) {
-                    meta = document.createElement('meta');
-                    meta.name = 'viewport';
-                    (document.head || document.documentElement).appendChild(meta);
-                }
-                meta.content = '$content';
-            })();
-        """.trimIndent()
-        binding.webView.evaluateJavascript(js, null)
     }
 
     /**
@@ -588,8 +566,10 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
-            useWideViewPort = true
-            loadWithOverviewMode = true
+            // 关闭自适应视口：让页面以 WebView 物理宽度(=设计宽度)作为 CSS 视口，
+            // 配合 setInitialScale 的 density 补偿实现 1:1 桌面布局渲染
+            useWideViewPort = false
+            loadWithOverviewMode = false
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
@@ -662,66 +642,6 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
                 return handleUrlRedirection(url)
-            }
-
-            // 拦截主框架 HTML 响应，注入 viewport meta 标签强制等比缩放渲染
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): android.webkit.WebResourceResponse? {
-                // 仅处理主框架且为 HTML 文档的请求
-                if (request?.isForMainFrame != true) return null
-                val url = request.url.toString()
-                // 跳过非 HTTP/HTTPS 请求和资源文件请求
-                if (!url.startsWith("http")) return null
-
-                return try {
-                    val conn = URL(url).openConnection() as HttpURLConnection
-                    conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-                    val cookie = CookieManager.getInstance().getCookie(url)
-                    if (!cookie.isNullOrEmpty()) {
-                        conn.setRequestProperty("Cookie", cookie)
-                    }
-                    conn.connectTimeout = 8000
-                    conn.readTimeout = 8000
-                    conn.connect()
-
-                    val contentType = conn.contentType ?: "text/html"
-                    if (!contentType.contains("html", ignoreCase = true)) {
-                        conn.disconnect()
-                        return null
-                    }
-
-                    val encoding = conn.contentEncoding ?: "UTF-8"
-                    val bodyBytes = conn.inputStream.use { it.readBytes() }
-                    var body = String(bodyBytes, charset(encoding))
-
-                    val scale = computeTerminalScale(binding.webView.width, binding.webView.height)
-                    currentTerminalScale = scale
-                    val viewportMeta = buildViewportMeta(scale)
-
-                    // 如果页面已有 viewport meta，替换之；否则在 <head> 中插入
-                    if (body.contains("name=\"viewport\"") || body.contains("name='viewport'")) {
-                        body = body.replace(
-                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
-                            viewportMeta
-                        )
-                    } else {
-                        body = body.replace(
-                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
-                        ) { "${it.value}$viewportMeta" }
-                    }
-
-                    android.webkit.WebResourceResponse(
-                        "text/html",
-                        encoding,
-                        body.byteInputStream(charset(encoding))
-                    )
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "拦截 HTML 注入 viewport 失败: ${e.message}")
-                    null // 失败时回退到默认加载
-                }
             }
 
             @Deprecated("Deprecated in Java")
