@@ -106,18 +106,11 @@ fi
 
 # Increase the maximum file descriptors if we can.
 if [ "$cygwin" = "false" -a "$darwin" = "false" -a "$nonstop" = "false" ] ; then
-    MAX_FD_LIMIT=`ulimit -H -n`
-    if [ $? -eq 0 ] ; then
-        if [ "$MAX_FD" = "maximum" -o "$MAX_FD" -gt "$MAX_FD_LIMIT" ] ; then
-            MAX_FD="$MAX_FD_LIMIT"
-        fi
-        ulimit -n $MAX_FD
-        if [ $? -ne 0 ] ; then
-            warn "Could not set maximum file descriptor limit: $MAX_FD"
-        fi
-    else
-        warn "Could not query maximum file descriptor limit: $MAX_FD"
+    MAX_FD_LIMIT=`ulimit -H -n 2>/dev/null || echo "65536"`
+    if [ "$MAX_FD" = "maximum" ] || [ "$MAX_FD" -gt "$MAX_FD_LIMIT" 2>/dev/null ] ; then
+        MAX_FD="$MAX_FD_LIMIT"
     fi
+    ulimit -n "$MAX_FD" 2>/dev/null || true
 fi
 
 # For Darwin, add options to specify how the application appears in the dock
