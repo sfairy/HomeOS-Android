@@ -119,47 +119,6 @@ class MainActivity : AppCompatActivity() {
 
         // 8. Handle any incoming deep-link intents (e.g., notification clicks)
         handleIntent(intent)
-
-        // 9. Asynchronously check for GitHub OTA updates 2 seconds after boot
-        recoveryHandler.postDelayed({
-            checkOtaUpdates()
-        }, 2000L)
-    }
-
-    /**
-     * Checks for GitHub Releases OTA Updates.
-     */
-    fun checkOtaUpdates() {
-        Log.i("MainActivity", "Triggering asynchronous GitHub OTA update check...")
-        val context = this@MainActivity
-        com.homeos.app.update.UpdateService.checkForUpdates(context, object : com.homeos.app.update.UpdateService.UpdateCallback {
-            override fun onUpdateAvailable(remoteVersion: String, downloadUrl: String, notes: String, sizeBytes: Long) {
-                val currentVer = try {
-                    val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                    packageInfo.versionName ?: "2026.06.15.07"
-                } catch (e: Exception) {
-                    "2026.06.15.07"
-                }
-                
-                com.homeos.app.update.UpdateDialog.show(
-                    activity = this@MainActivity,
-                    binding = binding,
-                    currentVersion = currentVer,
-                    remoteVersion = remoteVersion,
-                    notes = notes,
-                    sizeBytes = sizeBytes,
-                    downloadUrl = downloadUrl
-                )
-            }
-
-            override fun onNoUpdate() {
-                Log.d("MainActivity", "OTA update check: App is already up-to-date.")
-            }
-
-            override fun onError(error: String) {
-                Log.w("MainActivity", "OTA update check failed: $error")
-            }
-        })
     }
 
     /**
@@ -583,12 +542,12 @@ class MainActivity : AppCompatActivity() {
             useWideViewPort = true
             loadWithOverviewMode = true
             
-            // Set initial scale to 0 for automatic scaling based on viewport
-            setInitialScale(0)
-            
             // Ensure text zoom doesn't affect layout
             textZoom = 100
         }
+        
+        // Set initial scale to 0 for automatic scaling based on viewport (WebView method)
+        binding.webView.setInitialScale(0)
 
         // Inject the secure cross-platform bridge object
         binding.webView.addJavascriptInterface(AuraNativeBridge(this), "AuraNative")
@@ -1800,14 +1759,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun installApk(file: File) {
-        com.homeos.app.update.InstallUtil.installApk(this, file)
-    }
-
-    fun startUpgradeFlow(downloadUrl: String) {
-        com.homeos.app.update.ApkDownloader.startDownload(this, binding, downloadUrl)
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         recoveryHandler.removeCallbacks(recoveryRunnable)
@@ -1855,15 +1806,6 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 "2026.06.15.07"
             }
-        }
-
-        /**
-         * Triggers one-click background APK download and install
-         */
-        @JavascriptInterface
-        fun startUpgrade(downloadUrl: String) {
-            Log.i("AuraJSBridge", "Upgrade requested: $downloadUrl")
-            startUpgradeFlow(downloadUrl)
         }
 
         /**

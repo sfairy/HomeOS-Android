@@ -37,21 +37,6 @@
     <string name="btn_retry_now">立即重试</string>
     <string name="content_desc_warning">警告</string>
 
-    <!-- OTA Upgrade Screen -->
-    <string name="system_upgrade">系统升级</string>
-    <string name="downloading_update">正在下载 HomeOS 升级包…</string>
-    <string name="download_connecting">连接中…</string>
-    <string name="download_initializing">正在初始化下载…</string>
-    <string name="download_retry_accelerator">直连失败，正在切换加速通道…</string>
-    <string name="download_retrying">重试中…</string>
-    <string name="download_failed_dual">升级包下载失败（已尝试双通道）。</string>
-    <string name="download_ota_package">正在下载 OTA 升级包…</string>
-    <string name="download_downloading">下载中…</string>
-    <string name="spec_current_version">当前版本</string>
-    <string name="spec_latest_version">最新版本</string>
-    <string name="spec_package_size">升级包体积</string>
-    <string name="ota_notes_default">修复部分已知问题并提升系统稳定性</string>
-
     <!-- Misc -->
     <string name="export_save_config">导出并保存配置文件</string>
     <string name="export_failed">导出失败：%1$s</string>
