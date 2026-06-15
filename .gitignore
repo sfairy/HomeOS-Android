@@ -59,8 +59,8 @@ modules.xml
 .DS_Store
 Thumbs.db
 
-# Firebase
-google-services.json
+# Firebase - placeholder is committed for CI/CD
+# google-services.json
 
 # OTA files
 ota/

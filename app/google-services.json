@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "0",
+    "firebase_url": "https://example.firebaseio.com",
+    "project_id": "example",
+    "storage_bucket": "example.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:0:android:0000000000000000",
+        "android_client_info": {
+          "package_name": "com.homeos.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9A9zEa8C0eL0O9P8Q7R6T5Y4U3I2O1P0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
