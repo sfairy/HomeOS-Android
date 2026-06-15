@@ -582,6 +582,12 @@ class MainActivity : AppCompatActivity() {
             // Enable viewport scaling for responsive web pages
             useWideViewPort = true
             loadWithOverviewMode = true
+            
+            // Set initial scale to 0 for automatic scaling based on viewport
+            setInitialScale(0)
+            
+            // Ensure text zoom doesn't affect layout
+            textZoom = 100
         }
 
         // Inject the secure cross-platform bridge object
