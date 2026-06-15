@@ -500,12 +500,11 @@ class MainActivity : AppCompatActivity() {
             useWideViewPort = true
             loadWithOverviewMode = true
             
-            // 确保文本缩放不影响布局
-            textZoom = 100
+            // 启用页面自动缩放，遵循 meta viewport 等比适配屏幕
+            setSupportZoom(true)
         }
         
-        // 将初始缩放设置为 0，以便基于视口自动缩放
-        binding.webView.setInitialScale(0)
+        // 移除 textZoom 固定值和 setInitialScale，让 WebView 根据设备分辨率和 viewport 自动等比缩放
 
         // 注入安全的跨平台桥接对象
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
