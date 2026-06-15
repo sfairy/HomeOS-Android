@@ -512,9 +512,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 等比缩放：WebView 始终铺满屏幕（普通尺寸，避免超大纹理导致白屏），
-     * 在网页内部通过 CSS transform 把固定设计稿（designWidth × designHeight）
-     * 等比缩放并居中（contain 模式），比例锁定不变形，多余空间为黑边。
+     * 等比缩放：WebView 铺满屏幕；实际缩放由 shouldInterceptRequest 注入的
+     * 固定宽度 viewport(width=设计宽度) 配合 loadWithOverviewMode 自动完成。
+     * 此处仅维护缩放状态供 Bridge 读取，并确保 WebView 尺寸正常（防白屏）。
      */
     private fun applyTerminalScale(reloadPage: Boolean = false) {
         val container = binding.mainRoot
@@ -522,7 +522,6 @@ class MainActivity : AppCompatActivity() {
         val screenH = if (container.height > 0) container.height else resources.displayMetrics.heightPixels
         currentTerminalScale = computeTerminalScale(screenW, screenH)
 
-        // WebView 保持铺满屏幕，确保不会因超大 surface 白屏
         val lp = binding.webView.layoutParams as android.widget.FrameLayout.LayoutParams
         if (lp.width != android.widget.FrameLayout.LayoutParams.MATCH_PARENT ||
             lp.height != android.widget.FrameLayout.LayoutParams.MATCH_PARENT
@@ -535,50 +534,6 @@ class MainActivity : AppCompatActivity() {
         binding.webView.scaleY = 1f
 
         updateWebViewZoomSettings()
-
-        if (!binding.webView.url.isNullOrEmpty() && !isErrorState) {
-            injectFitJs()
-        }
-    }
-
-    /**
-     * 注入 CSS 等比缩放脚本：固定设计稿尺寸 + transform: scale() 居中，
-     * 适配任意终端分辨率且不变形；fixed 定位元素随之等比定位。
-     */
-    private fun injectFitJs() {
-        val (dw, dh) = resolveDesignResolution()
-        val js = """
-            (function(){
-              var DW=$dw, DH=$dh;
-              function fit(){
-                var de=document.documentElement;
-                if(!de||!document.body) return;
-                var vw=de.clientWidth, vh=de.clientHeight;
-                if(!vw||!vh) return;
-                var s=Math.min(vw/DW, vh/DH);
-                var b=document.body;
-                b.style.width=DW+'px';
-                b.style.height=DH+'px';
-                b.style.margin='0';
-                b.style.transformOrigin='top left';
-                b.style.transform='translate('+((vw-DW*s)/2)+'px,'+((vh-DH*s)/2)+'px) scale('+s+')';
-                b.style.overflow='hidden';
-                de.style.overflow='hidden';
-                de.style.background='#000';
-              }
-              var mv=document.querySelector('meta[name="viewport"]');
-              if(!mv){mv=document.createElement('meta');mv.name='viewport';(document.head||de).appendChild(mv);}
-              mv.setAttribute('content','width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no');
-              fit();
-              if(typeof requestAnimationFrame==='function'){requestAnimationFrame(fit);}
-              if(!window.__homeosFitBound){
-                window.__homeosFitBound=true;
-                window.addEventListener('resize',fit);
-              }
-              window.__homeosFit=fit;
-            })();
-        """.trimIndent()
-        binding.webView.evaluateJavascript(js, null)
     }
 
     /**
@@ -598,9 +553,9 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
-            // 使用 device-width 视口，缩放交由注入的 CSS transform 完成
+            // 注入固定宽度视口(=设计宽度) + overview 模式，WebView 自动等比缩放铺满屏幕
             useWideViewPort = true
-            loadWithOverviewMode = false
+            loadWithOverviewMode = true
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
@@ -673,6 +628,63 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
                 return handleUrlRedirection(url)
+            }
+
+            // 拦截主框架 HTML，注入固定宽度 viewport(width=设计宽度)，
+            // 配合 useWideViewPort + loadWithOverviewMode 让页面以设计分辨率视口渲染并等比缩放铺满
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): android.webkit.WebResourceResponse? {
+                if (request?.isForMainFrame != true) return null
+                val url = request.url.toString()
+                if (!url.startsWith("http")) return null
+
+                return try {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
+                    val cookie = android.webkit.CookieManager.getInstance().getCookie(url)
+                    if (!cookie.isNullOrEmpty()) {
+                        conn.setRequestProperty("Cookie", cookie)
+                    }
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    conn.connect()
+
+                    val contentType = conn.contentType ?: "text/html"
+                    if (!contentType.contains("html", ignoreCase = true)) {
+                        conn.disconnect()
+                        return null
+                    }
+
+                    val encoding = conn.contentEncoding ?: "UTF-8"
+                    val bodyBytes = conn.inputStream.use { it.readBytes() }
+                    var body = String(bodyBytes, charset(encoding))
+
+                    val (designW, _) = resolveDesignResolution()
+                    val viewportMeta = "<meta name=\"viewport\" content=\"width=$designW\">"
+
+                    if (body.contains("name=\"viewport\"") || body.contains("name='viewport'")) {
+                        body = body.replace(
+                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
+                            viewportMeta
+                        )
+                    } else {
+                        body = body.replace(
+                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
+                        ) { "${it.value}$viewportMeta" }
+                    }
+
+                    android.webkit.WebResourceResponse(
+                        "text/html",
+                        encoding,
+                        body.byteInputStream(charset(encoding))
+                    )
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "拦截 HTML 注入 viewport 失败: ${e.message}")
+                    null
+                }
             }
 
             @Deprecated("Deprecated in Java")
