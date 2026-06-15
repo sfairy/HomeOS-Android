@@ -585,10 +585,8 @@ class MainActivity : AppCompatActivity() {
                     val bodyBytes = conn.inputStream.use { it.readBytes() }
                     var body = String(bodyBytes, charset(encoding))
                     
-                    // 注入 viewport meta 标签，强制桌面宽度渲染
-                    val targetWidth = 1920
-                    val scale = String.format("%.2f", cssWidth.toFloat() / targetWidth)
-                    val viewportMeta = "<meta name=\"viewport\" content=\"width=$targetWidth, initial-scale=$scale\">"
+                    // 注入 viewport meta 标签，根据设备 CSS 像素宽度自适应渲染
+                    val viewportMeta = "<meta name=\"viewport\" content=\"width=$cssWidth\">"
                     
                     // 如果页面已有 viewport meta，替换之；否则在 <head> 中插入
                     if (body.contains("name=\"viewport\"") || body.contains("name='viewport'")) {
