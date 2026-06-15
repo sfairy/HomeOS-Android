@@ -643,10 +643,18 @@ class MainActivity : AppCompatActivity() {
                 return try {
                     val conn = URL(url).openConnection() as HttpURLConnection
                     conn.requestMethod = "GET"
+                    conn.instanceFollowRedirects = true
                     conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-                    val cookie = android.webkit.CookieManager.getInstance().getCookie(url)
-                    if (!cookie.isNullOrEmpty()) {
-                        conn.setRequestProperty("Cookie", cookie)
+                    conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    // 禁用压缩，避免拿到 gzip 字节后误当文本解析
+                    conn.setRequestProperty("Accept-Encoding", "identity")
+                    // 关键：HttpOnly 的 auth_token 无法通过 CookieManager.getCookie 读取，
+                    // 改用 SharedPreferences 中保存的 token 手动构建 Cookie 头，确保已认证
+                    val authToken = HomeOSAuth.loadAuthToken(sharedPreferences)
+                    val csrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
+                    val cookieHeader = HomeOSAuth.buildCookieHeader(authToken, csrfToken)
+                    if (cookieHeader.isNotEmpty()) {
+                        conn.setRequestProperty("Cookie", cookieHeader)
                     }
                     conn.connectTimeout = 8000
                     conn.readTimeout = 8000
@@ -658,9 +666,13 @@ class MainActivity : AppCompatActivity() {
                         return null
                     }
 
-                    val encoding = conn.contentEncoding ?: "UTF-8"
+                    // 正确解析字符集（contentType 形如 "text/html; charset=utf-8"），默认 UTF-8
+                    val charsetName = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
+                        .find(contentType)?.groupValues?.get(1)?.trim()
+                        ?.takeIf { runCatching { charset(it) }.isSuccess } ?: "UTF-8"
+
                     val bodyBytes = conn.inputStream.use { it.readBytes() }
-                    var body = String(bodyBytes, charset(encoding))
+                    var body = String(bodyBytes, charset(charsetName))
 
                     val (designW, _) = resolveDesignResolution()
                     val viewportMeta = "<meta name=\"viewport\" content=\"width=$designW\">"
@@ -678,8 +690,8 @@ class MainActivity : AppCompatActivity() {
 
                     android.webkit.WebResourceResponse(
                         "text/html",
-                        encoding,
-                        body.byteInputStream(charset(encoding))
+                        charsetName,
+                        body.byteInputStream(charset(charsetName))
                     )
                 } catch (e: Exception) {
                     Log.w("MainActivity", "拦截 HTML 注入 viewport 失败: ${e.message}")
