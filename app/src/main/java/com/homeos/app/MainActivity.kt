@@ -512,41 +512,73 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 视图层等比缩放：将 WebView 以固定设计分辨率（designWidth × designHeight）渲染整页，
-     * 再把整个 WebView 当作画布按 min(屏宽/设计宽, 屏高/设计高) 等比缩放并居中，
-     * 确保内部布局比例锁定、绝不变形（contain 模式，多余空间为黑边）。
+     * 等比缩放：WebView 始终铺满屏幕（普通尺寸，避免超大纹理导致白屏），
+     * 在网页内部通过 CSS transform 把固定设计稿（designWidth × designHeight）
+     * 等比缩放并居中（contain 模式），比例锁定不变形，多余空间为黑边。
      */
     private fun applyTerminalScale(reloadPage: Boolean = false) {
         val container = binding.mainRoot
         val screenW = if (container.width > 0) container.width else resources.displayMetrics.widthPixels
         val screenH = if (container.height > 0) container.height else resources.displayMetrics.heightPixels
-        val scale = computeTerminalScale(screenW, screenH)
-        currentTerminalScale = scale
+        currentTerminalScale = computeTerminalScale(screenW, screenH)
 
-        // density 补偿：useWideViewPort=false 时 WebView 视口宽 = 物理宽 / (initialScale * density)。
-        // 令 initialScale = 1/density，可使 CSS 视口 = WebView 物理宽 = 设计宽度，实现桌面 1:1 布局。
-        val density = resources.displayMetrics.density
-        val initialScalePercent = Math.round(100f / density).coerceIn(1, 1000)
-        binding.webView.setInitialScale(initialScalePercent)
-
-        // WebView 物理 layout 固定为设计分辨率像素，整页以桌面尺寸渲染
+        // WebView 保持铺满屏幕，确保不会因超大 surface 白屏
         val lp = binding.webView.layoutParams as android.widget.FrameLayout.LayoutParams
-        if (lp.width != scale.designWidth || lp.height != scale.designHeight ||
-            lp.gravity != android.view.Gravity.CENTER
+        if (lp.width != android.widget.FrameLayout.LayoutParams.MATCH_PARENT ||
+            lp.height != android.widget.FrameLayout.LayoutParams.MATCH_PARENT
         ) {
-            lp.width = scale.designWidth
-            lp.height = scale.designHeight
-            lp.gravity = android.view.Gravity.CENTER
+            lp.width = android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            lp.height = android.widget.FrameLayout.LayoutParams.MATCH_PARENT
             binding.webView.layoutParams = lp
         }
-
-        // 视图层整体等比缩放并居中（contain），比例锁定不变形
-        binding.webView.pivotX = scale.designWidth / 2f
-        binding.webView.pivotY = scale.designHeight / 2f
-        binding.webView.scaleX = scale.scaleFactor
-        binding.webView.scaleY = scale.scaleFactor
+        binding.webView.scaleX = 1f
+        binding.webView.scaleY = 1f
 
         updateWebViewZoomSettings()
+
+        if (!binding.webView.url.isNullOrEmpty() && !isErrorState) {
+            injectFitJs()
+        }
+    }
+
+    /**
+     * 注入 CSS 等比缩放脚本：固定设计稿尺寸 + transform: scale() 居中，
+     * 适配任意终端分辨率且不变形；fixed 定位元素随之等比定位。
+     */
+    private fun injectFitJs() {
+        val (dw, dh) = resolveDesignResolution()
+        val js = """
+            (function(){
+              var DW=$dw, DH=$dh;
+              function fit(){
+                var de=document.documentElement;
+                if(!de||!document.body) return;
+                var vw=de.clientWidth, vh=de.clientHeight;
+                if(!vw||!vh) return;
+                var s=Math.min(vw/DW, vh/DH);
+                var b=document.body;
+                b.style.width=DW+'px';
+                b.style.height=DH+'px';
+                b.style.margin='0';
+                b.style.transformOrigin='top left';
+                b.style.transform='translate('+((vw-DW*s)/2)+'px,'+((vh-DH*s)/2)+'px) scale('+s+')';
+                b.style.overflow='hidden';
+                de.style.overflow='hidden';
+                de.style.background='#000';
+              }
+              var mv=document.querySelector('meta[name="viewport"]');
+              if(!mv){mv=document.createElement('meta');mv.name='viewport';(document.head||de).appendChild(mv);}
+              mv.setAttribute('content','width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no');
+              fit();
+              if(typeof requestAnimationFrame==='function'){requestAnimationFrame(fit);}
+              if(!window.__homeosFitBound){
+                window.__homeosFitBound=true;
+                window.addEventListener('resize',fit);
+              }
+              window.__homeosFit=fit;
+            })();
+        """.trimIndent()
+        binding.webView.evaluateJavascript(js, null)
     }
 
     /**
@@ -566,9 +598,8 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
-            // 关闭自适应视口：让页面以 WebView 物理宽度(=设计宽度)作为 CSS 视口，
-            // 配合 setInitialScale 的 density 补偿实现 1:1 桌面布局渲染
-            useWideViewPort = false
+            // 使用 device-width 视口，缩放交由注入的 CSS transform 完成
+            useWideViewPort = true
             loadWithOverviewMode = false
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
