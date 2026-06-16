@@ -584,17 +584,13 @@ class MainActivity : AppCompatActivity() {
                         .find(ct)?.groupValues?.getOrNull(1) ?: "UTF-8"
                     var body = String(conn.inputStream.use { it.readBytes() }, charset(enc))
                     conn.disconnect()
-                    val viewportMeta = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover\">"
-                    if (Regex("""<meta[^>]*name=["']viewport""", RegexOption.IGNORE_CASE).containsMatchIn(body)) {
-                        body = body.replace(
-                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
-                            viewportMeta
-                        )
-                    } else {
-                        body = body.replace(
-                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
-                        ) { "${it.value}$viewportMeta" }
-                    }
+                    body = body.replace(
+                        Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
+                        ""
+                    )
+                    body = body.replace(
+                        Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
+                    ) { "${it.value}<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\">" }
                     android.webkit.WebResourceResponse("text/html", enc, body.byteInputStream(charset(enc)))
                 } catch (e: Exception) {
                     Log.w("MainActivity", "shouldInterceptRequest failed: ${e.message}")
@@ -1683,11 +1679,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * 防止系统返回按钮点击导致 Kiosk 外壳崩溃或关闭。
-     */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        binding.webView.postDelayed({
+            val currentUrl = binding.webView.url
+            if (currentUrl != null && currentUrl.startsWith("http")) {
+                binding.webView.reload()
+            }
+        }, 100)
     }
 
     override fun onBackPressed() {
