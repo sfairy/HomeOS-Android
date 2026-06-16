@@ -63,17 +63,6 @@ class MainActivity : AppCompatActivity() {
     private val FILECHOOSER_RESULTCODE = 10001
     private val NOTIFICATION_PERMISSION_REQUEST_CODE = 10010
 
-    private var currentTerminalScale: TerminalScale? = null
-
-    private data class TerminalScale(
-        val designWidth: Int,
-        val designHeight: Int,
-        val screenWidthPx: Int,
-        val screenHeightPx: Int,
-        val scaleFactor: Float,
-        val initialScalePercent: Int
-    )
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -485,76 +474,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun resolveDesignResolution(): Pair<Int, Int> {
-        val w = sharedPreferences.getInt("design_width", 3200)
-        val h = sharedPreferences.getInt("design_height", 2136)
-        return w to h
-    }
-
-    private fun computeTerminalScale(viewWidth: Int, viewHeight: Int): TerminalScale {
-        val (designW, designH) = resolveDesignResolution()
-        val metrics = resources.displayMetrics
-        val w = if (viewWidth > 0) viewWidth else metrics.widthPixels
-        val h = if (viewHeight > 0) viewHeight else metrics.heightPixels
-        val scale = minOf(w.toFloat() / designW, h.toFloat() / designH)
-        return TerminalScale(
-            designW,
-            designH,
-            w,
-            h,
-            scale,
-            (scale * 100).toInt().coerceIn(1, 500)
-        )
-    }
-
     private fun updateWebViewZoomSettings() {
         binding.webView.settings.apply {
-            // 始终关闭手势缩放，避免破坏终端等比布局
             setSupportZoom(false)
             builtInZoomControls = false
             displayZoomControls = false
         }
     }
 
-    /**
-     * 设备 CSS 宽度：physical / density。
-     * density=1（大屏壁挂）→ 3200；density=2 → 1600。
-     * 这是页面 width=device-width 时实际拿到的 CSS 视口宽度。
-     */
-    private fun deviceCssWidth(): Int =
-        (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt().coerceAtLeast(320)
-
-    /**
-     * 通过 evaluateJavascript 在页面上下文中：
-     * 1. 将 viewport 设置为 device-width（确保 CSS 视口 = 设备像素/density，任何设备都正确）
-     * 2. 注入 CSS 去除 max-width 约束，强制根容器铺满 100%（= CSS 设备宽度）
-     *
-     * density=1 设备(3200px)：CSS 视口=3200，去除 max-width 后内容填满 3200px CSS = 3200px 物理 ✓
-     * density=2 设备：CSS 视口=1600，内容填满 1600px CSS = 3200px 物理 ✓
-     */
-    private fun injectViewportJs(webView: WebView?) {
-        val cssW = deviceCssWidth()
-        val js = """
-            (function(){
-                var m = document.querySelector('meta[name="viewport"]');
-                if (!m) { m = document.createElement('meta'); m.name = 'viewport'; (document.head||document.documentElement).appendChild(m); }
-                m.content = 'width=$cssW, user-scalable=no';
-                if (document.getElementById('_hfx')) return;
-                var s = document.createElement('style');
-                s.id = '_hfx';
-                s.textContent = 'html,body,#app{max-width:none!important;width:100%!important;min-width:0!important;overflow-x:hidden!important}body{margin:0!important;padding:0!important}';
-                (document.head||document.documentElement).appendChild(s);
-            })();
-        """.trimIndent()
-        webView?.evaluateJavascript(js, null)
-    }
-
-    private fun applyTerminalScale(reloadPage: Boolean = false) {
-        val container = binding.mainRoot
-        val screenW = if (container.width > 0) container.width else resources.displayMetrics.widthPixels
-        val screenH = if (container.height > 0) container.height else resources.displayMetrics.heightPixels
-        currentTerminalScale = computeTerminalScale(screenW, screenH)
-        binding.webView.setInitialScale(0) // 使用系统默认缩放，不强制放大/缩小
+    private fun applyTerminalScale() {
+        // WebView 原生缩放：useWideViewPort + loadWithOverviewMode + setInitialScale(0)
+        // 会根据设备分辨率和页面 viewport 自适应等比缩放，无需手动计算或 JS 注入
+        binding.webView.setInitialScale(0)
         updateWebViewZoomSettings()
     }
 
@@ -576,17 +507,13 @@ class MainActivity : AppCompatActivity() {
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
-            loadWithOverviewMode = false   // 内容填满视口后无需 overview 自动缩放
+            loadWithOverviewMode = true
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
             }
         }
         updateWebViewZoomSettings()
-
-        binding.webView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            applyTerminalScale(reloadPage = false)
-        }
 
         // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
@@ -629,9 +556,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isErrorState) {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
-                    applyTerminalScale(reloadPage = false)
-                    // 注入 viewport：在页面 JS 上下文内直接修改，最可靠，不受 Cookie/gzip/拦截影响
-                    injectViewportJs(view)
+                    // WebView 原生缩放：useWideViewPort + loadWithOverviewMode + setInitialScale(0) 已自适应
                 }
             }
 
@@ -660,7 +585,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        applyTerminalScale(reloadPage = false)
+        applyTerminalScale()
     }
 
     /**
@@ -1801,7 +1726,7 @@ class MainActivity : AppCompatActivity() {
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        applyTerminalScale(reloadPage = false)
+        applyTerminalScale()
     }
 
     override fun onBackPressed() {
@@ -1845,10 +1770,6 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun getDeviceInfo(): String {
-            val scale = currentTerminalScale ?: computeTerminalScale(
-                binding.webView.width,
-                binding.webView.height
-            )
             val metrics = resources.displayMetrics
             return JSONObject().apply {
                 put("model", Build.MODEL)
@@ -1857,13 +1778,10 @@ class MainActivity : AppCompatActivity() {
                 put("appVersion", getAppVersion())
                 put("isKioskMode", isKioskMode)
                 put("platform", "android")
-                put("screenWidthPx", scale.screenWidthPx)
-                put("screenHeightPx", scale.screenHeightPx)
+                put("screenWidthPx", metrics.widthPixels)
+                put("screenHeightPx", metrics.heightPixels)
                 put("density", metrics.density.toDouble())
                 put("densityDpi", metrics.densityDpi)
-                put("designWidth", scale.designWidth)
-                put("designHeight", scale.designHeight)
-                put("scaleFactor", scale.scaleFactor.toDouble())
             }.toString()
         }
 
