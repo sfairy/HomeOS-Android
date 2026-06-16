@@ -519,7 +519,7 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
         }
 
-        binding.webView.setInitialScale(100)
+        binding.webView.setInitialScale(calculateAspectRatioScale())
 
         // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
@@ -597,6 +597,16 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlRedirection(url)
             }
         }
+    }
+
+    /**
+     * 计算基于设计画布宽度的等比缩放比例，确保页面完整显示不变形。
+     */
+    private fun calculateAspectRatioScale(): Int {
+        val screenWidth = resources.displayMetrics.widthPixels
+        val scale = (screenWidth.toFloat() / designWidth.toFloat() * 100).toInt()
+        Log.d("MainActivity", "屏幕宽度: ${screenWidth}, 设计宽度: ${designWidth}, 缩放: ${scale}%")
+        return scale.coerceIn(50, 200)
     }
 
     /**
