@@ -512,21 +512,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 在 onPageFinished 里通过 JS 设置 viewport width=设计宽度。
-     * 这是最可靠的方式：在页面 JS 上下文内直接执行，无需网络请求/Cookie/拦截，
-     * 配合 loadWithOverviewMode 让 WebView 自动等比缩放铺满屏幕。
+     * 设备 CSS 宽度：physical / density。
+     * density=1（大屏壁挂）→ 3200；density=2 → 1600。
+     * 这是页面 width=device-width 时实际拿到的 CSS 视口宽度。
+     */
+    private fun deviceCssWidth(): Int =
+        (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt().coerceAtLeast(320)
+
+    /**
+     * 通过 evaluateJavascript 在页面上下文中：
+     * 1. 将 viewport 设置为 device-width（确保 CSS 视口 = 设备像素/density，任何设备都正确）
+     * 2. 注入 CSS 去除 max-width 约束，强制根容器铺满 100%（= CSS 设备宽度）
+     *
+     * density=1 设备(3200px)：CSS 视口=3200，去除 max-width 后内容填满 3200px CSS = 3200px 物理 ✓
+     * density=2 设备：CSS 视口=1600，内容填满 1600px CSS = 3200px 物理 ✓
      */
     private fun injectViewportJs(webView: WebView?) {
-        val (designW, _) = resolveDesignResolution()
+        val cssW = deviceCssWidth()
         val js = """
             (function(){
                 var m = document.querySelector('meta[name="viewport"]');
-                if (!m) {
-                    m = document.createElement('meta');
-                    m.name = 'viewport';
-                    (document.head || document.documentElement).appendChild(m);
-                }
-                m.content = 'width=$designW';
+                if (!m) { m = document.createElement('meta'); m.name = 'viewport'; (document.head||document.documentElement).appendChild(m); }
+                m.content = 'width=$cssW, user-scalable=no';
+                if (document.getElementById('_hfx')) return;
+                var s = document.createElement('style');
+                s.id = '_hfx';
+                s.textContent = 'html,body,#app{max-width:none!important;width:100%!important;min-width:0!important;overflow-x:hidden!important}body{margin:0!important;padding:0!important}';
+                (document.head||document.documentElement).appendChild(s);
             })();
         """.trimIndent()
         webView?.evaluateJavascript(js, null)
@@ -537,6 +549,7 @@ class MainActivity : AppCompatActivity() {
         val screenW = if (container.width > 0) container.width else resources.displayMetrics.widthPixels
         val screenH = if (container.height > 0) container.height else resources.displayMetrics.heightPixels
         currentTerminalScale = computeTerminalScale(screenW, screenH)
+        binding.webView.setInitialScale(0) // 使用系统默认缩放，不强制放大/缩小
         updateWebViewZoomSettings()
     }
 
@@ -558,7 +571,7 @@ class MainActivity : AppCompatActivity() {
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
-            loadWithOverviewMode = true
+            loadWithOverviewMode = false   // 内容填满视口后无需 overview 自动缩放
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
@@ -1653,18 +1666,21 @@ class MainActivity : AppCompatActivity() {
             var body = conn.inputStream.use { String(it.readBytes(), charset(charset)) }
             conn.disconnect()
 
-            val (designW, _) = resolveDesignResolution()
-            val meta = "<meta name=\"viewport\" content=\"width=$designW, user-scalable=no\">"
-
+            val cssW = deviceCssWidth()
+            // 1. 注入/替换 viewport meta：width=CSS设备宽，禁止手势缩放
+            val viewportMeta = "<meta name=\"viewport\" content=\"width=$cssW, user-scalable=no\">"
             body = if (body.contains("name=\"viewport\"", ignoreCase = true) ||
                         body.contains("name='viewport'", ignoreCase = true)) {
                 body.replace(
-                    Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE), meta)
+                    Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE), viewportMeta)
             } else {
-                body.replace(Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)) { "${it.value}\n$meta" }
+                body.replace(Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)) { "${it.value}\n$viewportMeta" }
             }
+            // 2. 注入 CSS：去除根容器 max-width 约束，铺满完整视口
+            val cssFix = "<style id=\"_hfx\">html,body,#app{max-width:none!important;width:100%!important;min-width:0!important;overflow-x:hidden!important}body{margin:0!important;padding:0!important}</style>"
+            body = body.replace(Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)) { "${it.value}\n$cssFix" }
 
-            Log.d("HomeOS-Scale", "Viewport width=$designW injected → $url")
+            Log.d("HomeOS-Scale", "Viewport width=$cssW injected → $url")
             body
         } catch (e: Exception) {
             Log.w("HomeOS-Scale", "fetchWithViewportInjected failed: ${e.message}")
