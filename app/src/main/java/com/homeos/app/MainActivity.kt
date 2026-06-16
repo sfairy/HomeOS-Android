@@ -502,7 +502,7 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
         }
 
-        binding.webView.setInitialScale(0)
+        binding.webView.setInitialScale(calculateAspectRatioScale())
 
         // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
@@ -560,43 +560,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): android.webkit.WebResourceResponse? {
-                if (request?.isForMainFrame != true) return null
-                val url = request.url.toString()
-                if (!url.startsWith("http")) return null
-                return try {
-                    val conn = URL(url).openConnection() as HttpURLConnection
-                    conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-                    val cookie = HomeOSAuth.buildCookieHeader(
-                        HomeOSAuth.loadAuthToken(sharedPreferences),
-                        HomeOSAuth.loadCsrfToken(sharedPreferences)
-                    )
-                    if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
-                    conn.connectTimeout = 8000
-                    conn.readTimeout = 8000
-                    conn.connect()
-                    val ct = conn.contentType ?: "text/html"
-                    val enc = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
-                        .find(ct)?.groupValues?.getOrNull(1) ?: "UTF-8"
-                    var body = String(conn.inputStream.use { it.readBytes() }, charset(enc))
-                    conn.disconnect()
-                    body = body.replace(
-                        Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
-                        ""
-                    )
-                    body = body.replace(
-                        Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
-                    ) { "${it.value}<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\">" }
-                    android.webkit.WebResourceResponse("text/html", enc, body.byteInputStream(charset(enc)))
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "shouldInterceptRequest failed: ${e.message}")
-                    null
-                }
-            }
+            
 
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -610,6 +574,21 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlRedirection(url)
             }
         }
+    }
+
+    private fun calculateAspectRatioScale(): Int {
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+        val screenRatio = screenWidth.toFloat() / screenHeight.toFloat()
+        val targetRatio = 16f / 9f
+        val scale = if (screenRatio > targetRatio) {
+            (screenHeight.toFloat() / 9f * 16f / screenWidth.toFloat() * 100).toInt()
+        } else {
+            100
+        }
+        Log.d("MainActivity", "屏幕: ${screenWidth}x${screenHeight}, 比例: ${String.format("%.2f", screenRatio)}, 目标: 16:9, 缩放: ${scale}%")
+        return scale
     }
 
     /**
@@ -1682,6 +1661,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         binding.webView.postDelayed({
+            binding.webView.setInitialScale(calculateAspectRatioScale())
             val currentUrl = binding.webView.url
             if (currentUrl != null && currentUrl.startsWith("http")) {
                 binding.webView.reload()
