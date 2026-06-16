@@ -4,14 +4,6 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-import java.util.Properties
-
-val localProperties = Properties()
-val localPropertiesFile = rootProject.file("local.properties")
-if (localPropertiesFile.exists()) {
-    localProperties.load(localPropertiesFile.inputStream())
-}
-
 android {
     namespace = "com.homeos.app"
     compileSdk = 34
@@ -27,24 +19,18 @@ android {
     }
 
     signingConfigs {
-        val storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD")
-            ?: System.getenv("RELEASE_STORE_PASSWORD")
-        val keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
-            ?: System.getenv("RELEASE_KEY_PASSWORD")
-        if (storePassword != null && keyPassword != null) {
-            create("release") {
-                storeFile = file("homeos-release-key.jks")
-                this.storePassword = storePassword
-                keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS") ?: "homeos"
-                this.keyPassword = keyPassword
-            }
+        create("release") {
+            storeFile = file("homeos-release-key.jks")
+            storePassword = "homeos123"
+            keyAlias = "homeos"
+            keyPassword = "homeos123"
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfigs.findByName("release")?.let { signingConfig = it }
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
