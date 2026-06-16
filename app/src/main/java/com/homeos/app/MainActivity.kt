@@ -492,7 +492,7 @@ class MainActivity : AppCompatActivity() {
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
-            loadWithOverviewMode = false
+            loadWithOverviewMode = true
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
@@ -544,7 +544,7 @@ class MainActivity : AppCompatActivity() {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
                 }
-                applyAspectRatioZoom()
+                adjustPageZoom()
             }
 
             override fun onReceivedError(
@@ -574,18 +574,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyAspectRatioZoom() {
+    private fun adjustPageZoom() {
         val screenWidth = resources.displayMetrics.widthPixels
         val screenHeight = resources.displayMetrics.heightPixels
         val screenRatio = screenWidth.toFloat() / screenHeight.toFloat()
         val targetRatio = 16f / 9f
-        val scale = if (screenRatio > targetRatio) {
-            (screenHeight.toFloat() / 9f * 16f / screenWidth.toFloat()) * 100
+        
+        var scale = 100
+        if (screenRatio > targetRatio) {
+            scale = (screenHeight.toFloat() / 9f * 16f / screenWidth.toFloat() * 100).toInt()
         } else {
-            (screenWidth.toFloat() / 16f * 9f / screenHeight.toFloat()) * 100
+            scale = (screenWidth.toFloat() / 16f * 9f / screenHeight.toFloat() * 100).toInt()
         }
-        binding.webView.setInitialScale(scale.toInt())
-        Log.d("MainActivity", "屏幕分辨率: ${screenWidth}x${screenHeight}, 宽高比: ${String.format("%.2f", screenRatio)}, 目标宽高比: 16:9, 缩放比例: ${scale.toInt()}%")
+        
+        binding.webView.setInitialScale(scale)
+        
+        val js = """
+            (function() {
+                var meta = document.querySelector('meta[name="viewport"]');
+                if (meta) {
+                    meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+                } else {
+                    var newMeta = document.createElement('meta');
+                    newMeta.name = 'viewport';
+                    newMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+                    document.head.insertBefore(newMeta, document.head.firstChild);
+                }
+                window.addEventListener('resize', function() {
+                    var w = window.innerWidth;
+                    var h = window.innerHeight;
+                    var ratio = w / h;
+                    var targetRatio = 16/9;
+                    var body = document.body;
+                    if (body) {
+                        if (ratio > targetRatio) {
+                            body.style.width = (h * targetRatio) + 'px';
+                            body.style.height = h + 'px';
+                            body.style.marginLeft = ((w - h * targetRatio) / 2) + 'px';
+                            body.style.marginTop = '0px';
+                        } else {
+                            body.style.width = w + 'px';
+                            body.style.height = (w / targetRatio) + 'px';
+                            body.style.marginLeft = '0px';
+                            body.style.marginTop = ((h - w / targetRatio) / 2) + 'px';
+                        }
+                        body.style.overflow = 'hidden';
+                    }
+                });
+            })();
+        """.trimIndent()
+        
+        binding.webView.evaluateJavascript(js, null)
+        
+        Log.d("MainActivity", "屏幕分辨率: ${screenWidth}x${screenHeight}, 宽高比: ${String.format("%.2f", screenRatio)}, 目标宽高比: 16:9, 缩放比例: ${scale}%")
     }
 
     /**
