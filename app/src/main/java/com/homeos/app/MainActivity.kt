@@ -1874,9 +1874,9 @@ class MainActivity : AppCompatActivity() {
         fun getAppVersion(): String {
             return try {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                packageInfo.versionName ?: "2026.06.15.07"
+                packageInfo.versionName ?: BuildConfig.VERSION_NAME
             } catch (e: Exception) {
-                "2026.06.15.07"
+                BuildConfig.VERSION_NAME
             }
         }
 

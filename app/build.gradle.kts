@@ -1,8 +1,17 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.TimeZone
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.gms.google-services")
 }
+
+// 根据当前北京时间自动生成版本号
+val buildTime = SimpleDateFormat("yyyyMMddHH").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(Date())
+val versionCodeVal = buildTime.toInt()
+val versionNameVal = SimpleDateFormat("yyyy.MM.dd.HH").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(Date())
 
 android {
     namespace = "com.homeos.app"
@@ -12,8 +21,8 @@ android {
         applicationId = "com.homeos.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2026061507
-        versionName = "2026.06.15.07"
+        versionCode = versionCodeVal
+        versionName = versionNameVal
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
