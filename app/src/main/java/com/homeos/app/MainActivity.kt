@@ -1538,74 +1538,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadActiveUrl(url: String) {
         recoveryHandler.removeCallbacks(loadTimeoutRunnable)
-        recoveryHandler.postDelayed(loadTimeoutRunnable, 15000L)
-
-        // 在后台线程拉取 HTML 并注入 viewport，确保 Vue 初始化时就拿到正确的视口宽度；
-        // 若获取失败则回退到直接 loadUrl。
-        executor.execute {
-            val html = fetchWithViewportInjected(url)
-            runOnUiThread {
-                recoveryHandler.removeCallbacks(loadTimeoutRunnable)
-                recoveryHandler.postDelayed(loadTimeoutRunnable, 10000L)
-                if (html != null) {
-                    binding.webView.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null)
-                } else {
-                    binding.webView.loadUrl(url)
-                }
-            }
-        }
-    }
-
-    /**
-     * 拉取页面 HTML 并将 viewport 宽度替换为设计分辨率宽度，
-     * 使 Vue SPA 在初始化时就以正确的视口渲染，不依赖任何后置注入。
-     */
-    private fun fetchWithViewportInjected(url: String): String? {
-        return try {
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.instanceFollowRedirects = true
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-            conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
-            conn.setRequestProperty("Accept-Encoding", "identity") // 禁用压缩，避免 gzip 字节被误当文本
-            val authToken = HomeOSAuth.loadAuthToken(sharedPreferences)
-            val csrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
-            val cookie = HomeOSAuth.buildCookieHeader(authToken, csrfToken)
-            if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
-            conn.connectTimeout = 8000
-            conn.readTimeout = 12000
-            conn.connect()
-
-            val ct = conn.contentType ?: "text/html"
-            if (!ct.contains("html", ignoreCase = true)) { conn.disconnect(); return null }
-
-            val charset = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
-                .find(ct)?.groupValues?.getOrNull(1)?.trim()
-                ?.takeIf { runCatching { charset(it) }.isSuccess } ?: "UTF-8"
-
-            var body = conn.inputStream.use { String(it.readBytes(), charset(charset)) }
-            conn.disconnect()
-
-            val cssW = deviceCssWidth()
-            // 1. 注入/替换 viewport meta：width=CSS设备宽，禁止手势缩放
-            val viewportMeta = "<meta name=\"viewport\" content=\"width=$cssW, user-scalable=no\">"
-            body = if (body.contains("name=\"viewport\"", ignoreCase = true) ||
-                        body.contains("name='viewport'", ignoreCase = true)) {
-                body.replace(
-                    Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE), viewportMeta)
-            } else {
-                body.replace(Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)) { "${it.value}\n$viewportMeta" }
-            }
-            // 2. 注入 CSS：去除根容器 max-width 约束，铺满完整视口
-            val cssFix = "<style id=\"_hfx\">html,body,#app{max-width:none!important;width:100%!important;min-width:0!important;overflow-x:hidden!important}body{margin:0!important;padding:0!important}</style>"
-            body = body.replace(Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)) { "${it.value}\n$cssFix" }
-
-            Log.d("HomeOS-Scale", "Viewport width=$cssW injected → $url")
-            body
-        } catch (e: Exception) {
-            Log.w("HomeOS-Scale", "fetchWithViewportInjected failed: ${e.message}")
-            null
-        }
+        recoveryHandler.postDelayed(loadTimeoutRunnable, 10000L)
+        binding.webView.loadUrl(url)
     }
 
     /**
@@ -1792,9 +1726,9 @@ class MainActivity : AppCompatActivity() {
         fun getAppVersion(): String {
             return try {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                packageInfo.versionName ?: BuildConfig.VERSION_NAME
+                packageInfo.versionName ?: ""
             } catch (e: Exception) {
-                BuildConfig.VERSION_NAME
+                ""
             }
         }
 
