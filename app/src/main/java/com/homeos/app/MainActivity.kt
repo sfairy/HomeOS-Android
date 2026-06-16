@@ -42,6 +42,11 @@ import java.net.URL
  */
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val DEFAULT_DESIGN_WIDTH = 3200
+        private const val DEFAULT_DESIGN_HEIGHT = 2136
+    }
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var roamingManager: NetworkRoamingManager
@@ -50,6 +55,8 @@ class MainActivity : AppCompatActivity() {
 
     private var lanUrl = ""
     private var wanUrl = ""
+    private var designWidth = DEFAULT_DESIGN_WIDTH
+    private var designHeight = DEFAULT_DESIGN_HEIGHT
     private var isKioskMode = true
     private var activeUrl = ""
     private var tempSelectedLang = "zh"
@@ -373,6 +380,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadSavedConfig() {
         lanUrl = sharedPreferences.getString("server_lan_url", "") ?: ""
         wanUrl = sharedPreferences.getString("server_wan_url", "") ?: ""
+        designWidth = sharedPreferences.getInt("design_width", DEFAULT_DESIGN_WIDTH)
+        designHeight = sharedPreferences.getInt("design_height", DEFAULT_DESIGN_HEIGHT)
         isKioskMode = sharedPreferences.getBoolean("is_kiosk_mode", true)
 
         val savedUser = sharedPreferences.getString("auth_user", "") ?: ""
@@ -380,6 +389,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.inputLanUrl.setText(lanUrl)
         binding.inputWanUrl.setText(wanUrl)
+        binding.inputDesignWidth.setText(designWidth.toString())
+        binding.inputDesignHeight.setText(designHeight.toString())
         binding.inputUsername.setText(savedUser)
         binding.inputPassword.setText(savedPass)
 
@@ -404,15 +415,21 @@ class MainActivity : AppCompatActivity() {
         authToken: String,
         csrfToken: String,
         newKiosk: Boolean,
-        newLang: String
+        newLang: String,
+        newDesignWidth: Int = designWidth,
+        newDesignHeight: Int = designHeight
     ) {
         lanUrl = newLan
         wanUrl = newWan
+        designWidth = newDesignWidth
+        designHeight = newDesignHeight
         isKioskMode = newKiosk
 
         sharedPreferences.edit().apply {
             putString("server_lan_url", lanUrl)
             putString("server_wan_url", wanUrl)
+            putInt("design_width", designWidth)
+            putInt("design_height", designHeight)
             putString("auth_user", user)
             putString("auth_pass", pass)
             putString(HomeOSAuth.KEY_AUTH_TOKEN, authToken)
@@ -492,7 +509,7 @@ class MainActivity : AppCompatActivity() {
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
-            loadWithOverviewMode = true
+            loadWithOverviewMode = false
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
@@ -501,8 +518,6 @@ class MainActivity : AppCompatActivity() {
             builtInZoomControls = false
             displayZoomControls = false
         }
-
-        binding.webView.setInitialScale(calculateAspectRatioScale())
 
         // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
@@ -539,9 +554,15 @@ class MainActivity : AppCompatActivity() {
 
         // 挂钩系统客户端事件
         binding.webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                injectFixedViewport()
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 recoveryHandler.removeCallbacks(loadTimeoutRunnable)
+                injectFixedViewport()
                 if (!isErrorState) {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
@@ -576,19 +597,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun calculateAspectRatioScale(): Int {
-        val displayMetrics = resources.displayMetrics
-        val screenWidth = displayMetrics.widthPixels
-        val screenHeight = displayMetrics.heightPixels
-        val screenRatio = screenWidth.toFloat() / screenHeight.toFloat()
-        val targetRatio = 16f / 9f
-        val scale = if (screenRatio > targetRatio) {
-            (screenHeight.toFloat() / 9f * 16f / screenWidth.toFloat() * 100).toInt()
-        } else {
-            100
-        }
-        Log.d("MainActivity", "屏幕: ${screenWidth}x${screenHeight}, 比例: ${String.format("%.2f", screenRatio)}, 目标: 16:9, 缩放: ${scale}%")
-        return scale
+    /**
+     * 向 WebView 注入固定宽度 viewport，使页面始终按设计画布宽度排版，
+     * 再由 loadWithOverviewMode 整体等比缩放到屏幕宽度（不变行、满屏）。
+     */
+    private fun injectFixedViewport() {
+        val js = """
+            (function(){
+              var W=$designWidth;
+              function apply(){
+                var m=document.querySelector('meta[name=viewport]');
+                if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}
+                var c='width='+W+', user-scalable=no';
+                if(m.getAttribute('content')!==c){m.setAttribute('content',c);}
+              }
+              apply();
+              if(!window.__homeosVpObs){
+                window.__homeosVpObs=new MutationObserver(apply);
+                window.__homeosVpObs.observe(document.head,{childList:true,subtree:true,attributes:true});
+              }
+            })();
+        """.trimIndent()
+        binding.webView.evaluateJavascript(js, null)
+    }
+
+    /**
+     * 返回当前屏幕宽度相对设计画布宽度的等比缩放因子，供 JS Bridge 上报。
+     */
+    private fun currentScaleFactor(): Double {
+        val screenWidth = resources.displayMetrics.widthPixels
+        return screenWidth.toDouble() / designWidth.toDouble()
     }
 
     /**
@@ -824,12 +862,15 @@ class MainActivity : AppCompatActivity() {
         
         binding.layoutLanUrl.hint = res.getString(R.string.server_lan_url)
         binding.layoutWanUrl.hint = res.getString(R.string.server_wan_url)
+        binding.layoutDesignWidth.hint = res.getString(R.string.design_width)
+        binding.layoutDesignHeight.hint = res.getString(R.string.design_height)
         binding.layoutUsername.hint = res.getString(R.string.username)
         binding.layoutPassword.hint = res.getString(R.string.password)
         
         binding.txtDeviceModeLabel.text = res.getString(R.string.device_mode)
         binding.radioKiosk.text = res.getString(R.string.mode_kiosk)
         binding.radioCompanion.text = res.getString(R.string.mode_companion)
+        binding.txtDesignCanvasLabel.text = res.getString(R.string.design_canvas)
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
         
@@ -892,6 +933,10 @@ class MainActivity : AppCompatActivity() {
             val isKiosk = binding.radioKiosk.isChecked
             val selectedLang = tempSelectedLang
             val currentRes = getLocalizedResources(this@MainActivity, selectedLang)
+            val designWidthStr = binding.inputDesignWidth.text.toString().trim()
+            val designHeightStr = binding.inputDesignHeight.text.toString().trim()
+            val parsedDesignWidth = designWidthStr.toIntOrNull() ?: DEFAULT_DESIGN_WIDTH
+            val parsedDesignHeight = designHeightStr.toIntOrNull() ?: DEFAULT_DESIGN_HEIGHT
 
             if (lanStr.isEmpty()) {
                 binding.inputLanUrl.error = currentRes.getString(R.string.lan_url_required)
@@ -902,7 +947,10 @@ class MainActivity : AppCompatActivity() {
 
             // 如果用户选择跳过验证或未输入凭据，直接保存
             if (isAnyway || userStr.isEmpty()) {
-                saveConfig(lanStr, wanStr, userStr, passStr, "", "", isKiosk, selectedLang)
+                saveConfig(
+                    lanStr, wanStr, userStr, passStr, "", "", isKiosk, selectedLang,
+                    parsedDesignWidth, parsedDesignHeight
+                )
                 toggleSettingsOverlay(false)
                 return@setOnClickListener
             }
@@ -938,7 +986,9 @@ class MainActivity : AppCompatActivity() {
                             finalResult.authToken,
                             finalResult.csrfToken,
                             isKiosk,
-                            selectedLang
+                            selectedLang,
+                            parsedDesignWidth,
+                            parsedDesignHeight
                         )
 
                         binding.txtVerificationStatus.postDelayed({
@@ -1661,11 +1711,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         binding.webView.postDelayed({
-            binding.webView.setInitialScale(calculateAspectRatioScale())
-            val currentUrl = binding.webView.url
-            if (currentUrl != null && currentUrl.startsWith("http")) {
-                binding.webView.reload()
-            }
+            injectFixedViewport()
         }, 100)
     }
 
@@ -1722,6 +1768,9 @@ class MainActivity : AppCompatActivity() {
                 put("screenHeightPx", metrics.heightPixels)
                 put("density", metrics.density.toDouble())
                 put("densityDpi", metrics.densityDpi)
+                put("designWidth", designWidth)
+                put("designHeight", designHeight)
+                put("scaleFactor", currentScaleFactor())
             }.toString()
         }
 

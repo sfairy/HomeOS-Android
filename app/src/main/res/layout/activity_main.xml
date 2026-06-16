@@ -299,6 +299,66 @@
                         android:buttonTint="@color/neon_teal" />
                 </RadioGroup>
 
+                <!-- Design Canvas Size (for proportional scaling) -->
+                <TextView
+                    android:id="@+id/txtDesignCanvasLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="@string/design_canvas"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutDesignWidth"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:hint="@string/design_width"
+                        android:textColorHint="@color/text_secondary"
+                        app:hintTextColor="@color/neon_teal"
+                        app:boxStrokeColor="@color/neon_teal"
+                        app:placeholderText="3200"
+                        app:placeholderTextColor="@color/text_secondary"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputDesignWidth"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:inputType="number" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutDesignHeight"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="12dp"
+                        android:hint="@string/design_height"
+                        android:textColorHint="@color/text_secondary"
+                        app:hintTextColor="@color/neon_teal"
+                        app:boxStrokeColor="@color/neon_teal"
+                        app:placeholderText="2136"
+                        app:placeholderTextColor="@color/text_secondary"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputDesignHeight"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:inputType="number" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+
 
 
                 <!-- Buttons -->

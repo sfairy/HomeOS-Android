@@ -12,6 +12,9 @@
     <string name="device_mode">Device Work Mode</string>
     <string name="mode_kiosk">Wall Kiosk (Keep Screen On)</string>
     <string name="mode_companion">Companion (Mobile)</string>
+    <string name="design_canvas">Design Canvas (Proportional Scaling)</string>
+    <string name="design_width">Design Width (px)</string>
+    <string name="design_height">Design Height (px)</string>
     <string name="system_language">System Language</string>
     <string name="lang_zh">中文</string>
     <string name="lang_en">EN</string>
