@@ -474,21 +474,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateWebViewZoomSettings() {
-        binding.webView.settings.apply {
-            setSupportZoom(false)
-            builtInZoomControls = false
-            displayZoomControls = false
-        }
-    }
-
-    private fun applyTerminalScale() {
-        // WebView 原生缩放：useWideViewPort + loadWithOverviewMode + setInitialScale(0)
-        // 会根据设备分辨率和页面 viewport 自适应等比缩放，无需手动计算或 JS 注入
-        binding.webView.setInitialScale(0)
-        updateWebViewZoomSettings()
-    }
-
     /**
      * 加速 Chromium 引擎的核心配置。
      */
@@ -512,8 +497,11 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
             }
+            // 禁用手势缩放
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
         }
-        updateWebViewZoomSettings()
 
         // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
@@ -556,7 +544,6 @@ class MainActivity : AppCompatActivity() {
                 if (!isErrorState) {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
-                    // WebView 原生缩放：useWideViewPort + loadWithOverviewMode + setInitialScale(0) 已自适应
                 }
             }
 
@@ -567,9 +554,49 @@ class MainActivity : AppCompatActivity() {
             ) {
                 super.onReceivedError(view, request, error)
                 recoveryHandler.removeCallbacks(loadTimeoutRunnable)
-                // 过滤非主框架资源加载错误
                 if (request?.isForMainFrame == true) {
                     handlePageLoadFailure()
+                }
+            }
+
+            // 拦截主框架 HTML：注入 width=device-width viewport，使页面根据设备分辨率等比缩放
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): android.webkit.WebResourceResponse? {
+                if (request?.isForMainFrame != true) return null
+                val url = request.url.toString()
+                if (!url.startsWith("http")) return null
+                return try {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
+                    val cookie = HomeOSAuth.buildCookieHeader(
+                        HomeOSAuth.loadAuthToken(sharedPreferences),
+                        HomeOSAuth.loadCsrfToken(sharedPreferences)
+                    )
+                    if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    conn.connect()
+                    val ct = conn.contentType ?: "text/html"
+                    val enc = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
+                        .find(ct)?.groupValues?.getOrNull(1) ?: "UTF-8"
+                    var body = String(conn.inputStream.use { it.readBytes() }, charset(enc))
+                    conn.disconnect()
+                    // 替换页面已有的 viewport meta，或向 <head> 注入新 viewport
+                    val vp = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+                    if (Regex("""<meta[^>]*name=["']viewport""", RegexOption.IGNORE_CASE).containsMatchIn(body)) {
+                        body = body.replace(
+                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE), vp)
+                    } else {
+                        body = body.replace(
+                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)) { "${it.value}$vp" }
+                    }
+                    android.webkit.WebResourceResponse("text/html", enc, body.byteInputStream(charset(enc)))
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "shouldInterceptRequest失败: ${e.message}")
+                    null
                 }
             }
 
@@ -584,8 +611,6 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlRedirection(url)
             }
         }
-
-        applyTerminalScale()
     }
 
     /**
@@ -1660,7 +1685,6 @@ class MainActivity : AppCompatActivity() {
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        applyTerminalScale()
     }
 
     override fun onBackPressed() {
