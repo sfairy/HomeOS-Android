@@ -502,6 +502,8 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
         }
 
+        binding.webView.setInitialScale(0)
+
         // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
 
@@ -544,7 +546,6 @@ class MainActivity : AppCompatActivity() {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
                 }
-                adjustPageZoom()
             }
 
             override fun onReceivedError(
@@ -559,7 +560,48 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): android.webkit.WebResourceResponse? {
+                if (request?.isForMainFrame != true) return null
+                val url = request.url.toString()
+                if (!url.startsWith("http")) return null
+                return try {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
+                    val cookie = HomeOSAuth.buildCookieHeader(
+                        HomeOSAuth.loadAuthToken(sharedPreferences),
+                        HomeOSAuth.loadCsrfToken(sharedPreferences)
+                    )
+                    if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    conn.connect()
+                    val ct = conn.contentType ?: "text/html"
+                    val enc = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
+                        .find(ct)?.groupValues?.getOrNull(1) ?: "UTF-8"
+                    var body = String(conn.inputStream.use { it.readBytes() }, charset(enc))
+                    conn.disconnect()
+                    val viewportMeta = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover\">"
+                    if (Regex("""<meta[^>]*name=["']viewport""", RegexOption.IGNORE_CASE).containsMatchIn(body)) {
+                        body = body.replace(
+                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
+                            viewportMeta
+                        )
+                    } else {
+                        body = body.replace(
+                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
+                        ) { "${it.value}$viewportMeta" }
+                    }
+                    android.webkit.WebResourceResponse("text/html", enc, body.byteInputStream(charset(enc)))
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "shouldInterceptRequest failed: ${e.message}")
+                    null
+                }
+            }
+
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
@@ -572,61 +614,6 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlRedirection(url)
             }
         }
-    }
-
-    private fun adjustPageZoom() {
-        val screenWidth = resources.displayMetrics.widthPixels
-        val screenHeight = resources.displayMetrics.heightPixels
-        val screenRatio = screenWidth.toFloat() / screenHeight.toFloat()
-        val targetRatio = 16f / 9f
-        
-        var scale = 100
-        if (screenRatio > targetRatio) {
-            scale = (screenHeight.toFloat() / 9f * 16f / screenWidth.toFloat() * 100).toInt()
-        } else {
-            scale = (screenWidth.toFloat() / 16f * 9f / screenHeight.toFloat() * 100).toInt()
-        }
-        
-        binding.webView.setInitialScale(scale)
-        
-        val js = """
-            (function() {
-                var meta = document.querySelector('meta[name="viewport"]');
-                if (meta) {
-                    meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-                } else {
-                    var newMeta = document.createElement('meta');
-                    newMeta.name = 'viewport';
-                    newMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-                    document.head.insertBefore(newMeta, document.head.firstChild);
-                }
-                window.addEventListener('resize', function() {
-                    var w = window.innerWidth;
-                    var h = window.innerHeight;
-                    var ratio = w / h;
-                    var targetRatio = 16/9;
-                    var body = document.body;
-                    if (body) {
-                        if (ratio > targetRatio) {
-                            body.style.width = (h * targetRatio) + 'px';
-                            body.style.height = h + 'px';
-                            body.style.marginLeft = ((w - h * targetRatio) / 2) + 'px';
-                            body.style.marginTop = '0px';
-                        } else {
-                            body.style.width = w + 'px';
-                            body.style.height = (w / targetRatio) + 'px';
-                            body.style.marginLeft = '0px';
-                            body.style.marginTop = ((h - w / targetRatio) / 2) + 'px';
-                        }
-                        body.style.overflow = 'hidden';
-                    }
-                });
-            })();
-        """.trimIndent()
-        
-        binding.webView.evaluateJavascript(js, null)
-        
-        Log.d("MainActivity", "屏幕分辨率: ${screenWidth}x${screenHeight}, 宽高比: ${String.format("%.2f", screenRatio)}, 目标宽高比: 16:9, 缩放比例: ${scale}%")
     }
 
     /**
