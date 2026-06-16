@@ -492,12 +492,11 @@ class MainActivity : AppCompatActivity() {
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
-            loadWithOverviewMode = true
+            loadWithOverviewMode = false
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 isAlgorithmicDarkeningAllowed = false
             }
-            // 禁用手势缩放
             setSupportZoom(false)
             builtInZoomControls = false
             displayZoomControls = false
@@ -545,6 +544,7 @@ class MainActivity : AppCompatActivity() {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
                 }
+                applyAspectRatioZoom()
             }
 
             override fun onReceivedError(
@@ -559,46 +559,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // 拦截主框架 HTML：注入 width=device-width viewport，使页面根据设备分辨率等比缩放
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): android.webkit.WebResourceResponse? {
-                if (request?.isForMainFrame != true) return null
-                val url = request.url.toString()
-                if (!url.startsWith("http")) return null
-                return try {
-                    val conn = URL(url).openConnection() as HttpURLConnection
-                    conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-                    val cookie = HomeOSAuth.buildCookieHeader(
-                        HomeOSAuth.loadAuthToken(sharedPreferences),
-                        HomeOSAuth.loadCsrfToken(sharedPreferences)
-                    )
-                    if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
-                    conn.connectTimeout = 8000
-                    conn.readTimeout = 8000
-                    conn.connect()
-                    val ct = conn.contentType ?: "text/html"
-                    val enc = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE)
-                        .find(ct)?.groupValues?.getOrNull(1) ?: "UTF-8"
-                    var body = String(conn.inputStream.use { it.readBytes() }, charset(enc))
-                    conn.disconnect()
-                    // 替换页面已有的 viewport meta，或向 <head> 注入新 viewport
-                    val vp = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-                    if (Regex("""<meta[^>]*name=["']viewport""", RegexOption.IGNORE_CASE).containsMatchIn(body)) {
-                        body = body.replace(
-                            Regex("""<meta[^>]*name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE), vp)
-                    } else {
-                        body = body.replace(
-                            Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)) { "${it.value}$vp" }
-                    }
-                    android.webkit.WebResourceResponse("text/html", enc, body.byteInputStream(charset(enc)))
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "shouldInterceptRequest失败: ${e.message}")
-                    null
-                }
-            }
+            
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
@@ -611,6 +572,20 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlRedirection(url)
             }
         }
+    }
+
+    private fun applyAspectRatioZoom() {
+        val screenWidth = resources.displayMetrics.widthPixels
+        val screenHeight = resources.displayMetrics.heightPixels
+        val screenRatio = screenWidth.toFloat() / screenHeight.toFloat()
+        val targetRatio = 16f / 9f
+        val scale = if (screenRatio > targetRatio) {
+            (screenHeight.toFloat() / 9f * 16f / screenWidth.toFloat()) * 100
+        } else {
+            (screenWidth.toFloat() / 16f * 9f / screenHeight.toFloat()) * 100
+        }
+        binding.webView.setInitialScale(scale.toInt())
+        Log.d("MainActivity", "屏幕分辨率: ${screenWidth}x${screenHeight}, 宽高比: ${String.format("%.2f", screenRatio)}, 目标宽高比: 16:9, 缩放比例: ${scale.toInt()}%")
     }
 
     /**
