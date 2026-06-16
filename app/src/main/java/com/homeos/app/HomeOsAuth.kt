@@ -132,30 +132,6 @@ object HomeOSAuth {
     }
 
     /**
-     * 保存认证令牌到 SharedPreferences
-     * @param prefs SharedPreferences 实例
-     * @param authToken 认证令牌
-     * @param csrfToken CSRF 令牌
-     * @param user 用户名
-     * @param pass 密码
-     */
-    fun saveAuthTokens(
-        prefs: SharedPreferences,
-        authToken: String,
-        csrfToken: String,
-        user: String,
-        pass: String
-    ) {
-        prefs.edit().apply {
-            putString(KEY_AUTH_TOKEN, authToken)
-            putString(KEY_CSRF_TOKEN, csrfToken)
-            putString("auth_user", user)
-            putString("auth_pass", pass)
-            apply()
-        }
-    }
-
-    /**
      * 清除所有认证令牌
      * @param prefs SharedPreferences 实例
      */

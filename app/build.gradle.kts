@@ -4,6 +4,14 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+import java.util.Properties
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
+}
+
 android {
     namespace = "com.homeos.app"
     compileSdk = 34
@@ -19,18 +27,24 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("homeos-release-key.jks")
-            storePassword = "homeos123"
-            keyAlias = "homeos"
-            keyPassword = "homeos123"
+        val storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD")
+            ?: System.getenv("RELEASE_STORE_PASSWORD")
+        val keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
+            ?: System.getenv("RELEASE_KEY_PASSWORD")
+        if (storePassword != null && keyPassword != null) {
+            create("release") {
+                storeFile = file("homeos-release-key.jks")
+                this.storePassword = storePassword
+                keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS") ?: "homeos"
+                this.keyPassword = keyPassword
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -65,9 +79,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.webkit:webkit:1.10.0")
 
-    // OkHttp & Gson for asynchronous upgrade checks and JSON parsing
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.google.code.gson:gson:2.10.1")
+    // OkHttp & Gson removed — network uses HttpURLConnection; no JSON library needed
 
     // Google FCM
     implementation("com.google.firebase:firebase-messaging-ktx:23.4.1")

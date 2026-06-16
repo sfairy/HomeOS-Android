@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
-import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
@@ -24,7 +23,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.RadioButton
 import androidx.appcompat.app.AppCompatActivity
 import com.homeos.app.databinding.ActivityMainBinding
 import com.google.firebase.messaging.FirebaseMessaging
@@ -63,6 +61,7 @@ class MainActivity : AppCompatActivity() {
 
     private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
     private val FILECHOOSER_RESULTCODE = 10001
+    private val NOTIFICATION_PERMISSION_REQUEST_CODE = 10010
 
     private var currentTerminalScale: TerminalScale? = null
 
@@ -119,6 +118,9 @@ class MainActivity : AppCompatActivity() {
         // 6. 连接后端服务
         startServices()
 
+        // Android 13+ 运行时申请通知权限
+        requestNotificationPermissionIfNeeded()
+
         // 检查是否已配置；如果未配置（或使用默认值），强制显示设置屏幕
         val isConfigured = sharedPreferences.getBoolean("is_configured", false)
         if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:8501") {
@@ -141,6 +143,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setCancelable(false)
 
+        val privacyRes = getLocalizedResources(this, tempSelectedLang)
         val isZh = tempSelectedLang == "zh"
 
         val container = android.widget.LinearLayout(this).apply {
@@ -164,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(iconView)
 
         val titleText = android.widget.TextView(this).apply {
-            text = if (isZh) "HomeOS 隐私协议与授权声明" else "隐私政策与授权声明"
+            text = privacyRes.getString(R.string.privacy_title)
             textSize = 20f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -217,7 +220,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val privacyBody = android.widget.TextView(this).apply {
-            text = if (isZh) """
+            text = if (tempSelectedLang == "zh") """
                     欢迎使用 HomeOS 伴侣终端！我们高度重视您的个人隐私与数据安全。在您同意本协议前，应用程序不会初始化任何第三方 SDK 或是发起任何网络通讯。
 
                     请您仔细阅读以下关键条款：
@@ -274,7 +277,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val agreeButton = android.widget.Button(this).apply {
-            text = if (isZh) "同意并继续" else "同意并继续"
+            text = getLocalizedResources(this@MainActivity, tempSelectedLang)
+                .getString(R.string.privacy_agree)
             textSize = 14f
             setTextColor(Color.BLACK)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -302,7 +306,8 @@ class MainActivity : AppCompatActivity() {
         buttonsLayout.addView(agreeButton)
 
         val disagreeButton = android.widget.TextView(this).apply {
-            text = if (isZh) "不同意并退出" else "不同意并退出"
+            text = getLocalizedResources(this@MainActivity, tempSelectedLang)
+                .getString(R.string.privacy_disagree)
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -669,11 +674,12 @@ class MainActivity : AppCompatActivity() {
             // 1. 拦截 mailto、tel 或其他非 http 协议，在系统处理器中打开
             if (scheme != "http" && scheme != "https") {
                 val intent = Intent(Intent.ACTION_VIEW, uri)
-                if (intent.resolveActivity(packageManager) != null) {
+                try {
                     startActivity(intent)
                     return true
+                } catch (_: android.content.ActivityNotFoundException) {
+                    return false
                 }
-                return false
             }
             
             val targetHost = uri.host ?: return false
@@ -728,8 +734,6 @@ class MainActivity : AppCompatActivity() {
      */
     private fun shareOrSaveDownloadedFile(url: String, mimeType: String?, contentDisposition: String?) {
         try {
-            val isZh = tempSelectedLang == "zh"
-            
             // 提取文件名
             var fileName = "HomeOS_backup.json"
             if (contentDisposition != null) {
@@ -762,8 +766,8 @@ class MainActivity : AppCompatActivity() {
             }
             
             // 保存到临时缓存目录
-            val tempFile = java.io.File(cacheDir, fileName)
-            java.io.FileOutputStream(tempFile).use { fos ->
+            val tempFile = File(cacheDir, fileName)
+            FileOutputStream(tempFile).use { fos ->
                 fos.write(dataBytes)
             }
             
@@ -901,9 +905,9 @@ class MainActivity : AppCompatActivity() {
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
         
-        binding.btnQuickDemo.text = if (langCode == "zh") "一键进入演示系统" else "进入演示模式"
-        binding.btnExitDemo.text = if (langCode == "zh") "一键退出演示系统" else "退出演示模式"
-        binding.btnWipeData.text = if (langCode == "zh") "擦除数据并退出" else "擦除数据并退出"
+        binding.btnQuickDemo.text = res.getString(R.string.btn_quick_demo)
+        binding.btnExitDemo.text = res.getString(R.string.btn_exit_demo)
+        binding.btnWipeData.text = res.getString(R.string.btn_wipe_data)
         
         // 处理"保存配置"与"强制保存"的切换
         val currentBtnText = binding.btnSaveSettings.text.toString()
@@ -1030,8 +1034,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnQuickDemo.setOnClickListener {
             showDemoModeIntroductionDialog { dialog ->
-                val isZh = tempSelectedLang == "zh"
-                
                 // 禁用设置覆盖层按钮以防止二次操作
                 binding.btnSaveSettings.isEnabled = false
                 binding.btnCancelSettings.isEnabled = false
@@ -1128,7 +1130,7 @@ class MainActivity : AppCompatActivity() {
      * 显示一个精美的高端弹窗，解释演示模式、PRO 功能和限制。
      */
     private fun showDemoModeIntroductionDialog(onConfirm: (android.app.Dialog) -> Unit) {
-        val isZh = tempSelectedLang == "zh"
+        val res = getLocalizedResources(this, tempSelectedLang)
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setCancelable(false)
         
@@ -1159,7 +1161,7 @@ class MainActivity : AppCompatActivity() {
             addView(progressBar)
             
             val loadingText = android.widget.TextView(this@MainActivity).apply {
-                text = if (isZh) "正在安全认证演示系统..." else "正在安全认证演示系统..."
+                text = res.getString(R.string.demo_loading_title)
                 textSize = 14f
                 setTextColor(Color.parseColor("#00E5FF"))
                 typeface = android.graphics.Typeface.MONOSPACE
@@ -1169,7 +1171,7 @@ class MainActivity : AppCompatActivity() {
             addView(loadingText)
             
             val loadingSubText = android.widget.TextView(this@MainActivity).apply {
-                text = if (isZh) "正在为您跨国建立安全加密信道" else "正在为您跨国建立安全加密信道"
+                text = res.getString(R.string.demo_loading_subtitle)
                 textSize = 11f
                 setTextColor(Color.GRAY)
                 typeface = android.graphics.Typeface.MONOSPACE
@@ -1198,7 +1200,7 @@ class MainActivity : AppCompatActivity() {
         headerView.addView(shieldIcon)
         
         val titleText = android.widget.TextView(this).apply {
-            text = if (isZh) "\uD83D\uDCA1 HomeOS PRO 演示沙盒体验指南" else "\uD83D\uDCA1 HomeOS PRO 演示沙盒体验指南"
+            text = "\uD83D\uDCA1 ${res.getString(R.string.demo_title)}"
             textSize = 20f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1256,7 +1258,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         val introText = android.widget.TextView(this).apply {
-            text = if (isZh) "欢迎体验 HomeOS 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项：" else "欢迎体验 HomeOS 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项："
+            text = res.getString(R.string.demo_intro)
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             setLineSpacing(0f, 1.2f)
@@ -1329,17 +1331,10 @@ class MainActivity : AppCompatActivity() {
             contentLayout.addView(itemLayout)
         }
         
-        if (isZh) {
-            addFeatureItem("1️⃣", "尊享 PRO 全功能体验", "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！")
-            addFeatureItem("2️⃣", "零风险仿真沙盒运行", "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！")
-            addFeatureItem("3️⃣", "布局只读保护限制", "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。")
-            addFeatureItem("⚙️", "如何退出演示模式", "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择\"一键退出演示模式\"即可。")
-        } else {
-            addFeatureItem("1️⃣", "尊享 PRO 全功能体验", "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！")
-            addFeatureItem("2️⃣", "零风险仿真沙盒运行", "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！")
-            addFeatureItem("3️⃣", "布局只读保护限制", "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。")
-            addFeatureItem("⚙️", "如何退出演示模式", "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择\"一键退出演示模式\"即可。")
-        }
+        addFeatureItem("1\uFE0F\u20E3", res.getString(R.string.demo_feature1_title), res.getString(R.string.demo_feature1_desc))
+        addFeatureItem("2\uFE0F\u20E3", res.getString(R.string.demo_feature2_title), res.getString(R.string.demo_feature2_desc))
+        addFeatureItem("3\uFE0F\u20E3", res.getString(R.string.demo_feature3_title), res.getString(R.string.demo_feature3_desc))
+        addFeatureItem("\u2699\uFE0F", res.getString(R.string.demo_feature4_title), res.getString(R.string.demo_feature4_desc))
         
         scrollView.addView(contentLayout)
         container.addView(scrollView)
@@ -1375,7 +1370,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         val enterButton = android.widget.Button(this).apply {
-            text = if (isZh) "同意并立即进入体验" else "同意并立即进入体验"
+            text = res.getString(R.string.demo_enter_button)
             textSize = 14f
             setTextColor(Color.BLACK)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1409,7 +1404,7 @@ class MainActivity : AppCompatActivity() {
         buttonsLayout.addView(enterButton)
         
         val cancelButton = android.widget.TextView(this).apply {
-            text = "取消"
+            text = res.getString(R.string.cancel)
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1472,12 +1467,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun deleteDirContents(dir: java.io.File?): Boolean {
+    private fun deleteDirContents(dir: File?): Boolean {
         if (dir != null && dir.isDirectory) {
             val children = dir.list()
             if (children != null) {
                 for (i in children.indices) {
-                    val success = deleteFileOrDir(java.io.File(dir, children[i]))
+                    val success = deleteFileOrDir(File(dir, children[i]))
                     if (!success) {
                         return false
                     }
@@ -1487,12 +1482,12 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    private fun deleteFileOrDir(file: java.io.File?): Boolean {
+    private fun deleteFileOrDir(file: File?): Boolean {
         if (file != null && file.isDirectory) {
             val children = file.list()
             if (children != null) {
                 for (i in children.indices) {
-                    val success = deleteFileOrDir(java.io.File(file, children[i]))
+                    val success = deleteFileOrDir(File(file, children[i]))
                     if (!success) {
                         return false
                     }
@@ -1745,7 +1740,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 启动后台前台服务以进行主动的 Socket.IO 连接监控。
+     * Android 13+ 运行时申请通知权限，确保告警通知可正常显示。
+     */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
+    }
+
+    /**
+     * 启动后台前台服务以进行主动的通知轮询监控。
      */
     private fun startServices() {
         try {
@@ -1772,11 +1783,13 @@ class MainActivity : AppCompatActivity() {
         val openCameraEntity = intent?.getStringExtra("OPEN_CAMERA_ENTITY")
         val alertId = intent?.getStringExtra("ALERT_ID")
 
-        if (openCameraEntity != null) {
-            Log.i("MainActivity", "深度链接已触发：目标摄像头实体 -> $openCameraEntity")
+        if (openCameraEntity != null || alertId != null) {
+            Log.i("MainActivity", "深度链接已触发：alertId=$alertId, cameraEntity=$openCameraEntity")
+            val safeAlertId = JSONObject.quote(alertId ?: "")
+            val safeCameraEntity = JSONObject.quote(openCameraEntity ?: "")
             binding.webView.post {
                 binding.webView.evaluateJavascript(
-                    "if (window.__HOMEOS_ALERT_ROUTER__) { window.__HOMEOS_ALERT_ROUTER__('$alertId', '$openCameraEntity'); }",
+                    "if (window.__HOMEOS_ALERT_ROUTER__) { window.__HOMEOS_ALERT_ROUTER__($safeAlertId, $safeCameraEntity); }",
                     null
                 )
             }
@@ -1807,6 +1820,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         recoveryHandler.removeCallbacks(recoveryRunnable)
+        recoveryHandler.removeCallbacks(loadTimeoutRunnable)
+        executor.shutdown()
     }
 
     /**
@@ -1913,7 +1928,7 @@ class MainActivity : AppCompatActivity() {
                     RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 }
                 val ringtone = RingtoneManager.getRingtone(context, soundUri)
-                ringtone.play()
+                ringtone?.play()
             } catch (e: Exception) {
                 Log.e("JSBridge", "音频播放失败: ${e.message}")
             }

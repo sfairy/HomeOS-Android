@@ -207,13 +207,13 @@ class NotificationOrchestrator(private val context: Context) {
     }
 
     private fun mapSourceToTitle(source: String, level: String): String = when (source) {
-        "security-panel", "anomaly-detector" -> "安防告警"
-        "device-monitor" -> "设备告警"
-        "alert-rule" -> "规则告警"
+        "security-panel", "anomaly-detector" -> context.getString(R.string.alert_title_security)
+        "device-monitor" -> context.getString(R.string.alert_title_device)
+        "alert-rule" -> context.getString(R.string.alert_title_rule)
         else -> when (level.lowercase()) {
-            "danger", "critical" -> "紧急通知"
-            "warn", "warning" -> "警告通知"
-            else -> "HomeOS 通知"
+            "danger", "critical" -> context.getString(R.string.alert_title_emergency)
+            "warn", "warning" -> context.getString(R.string.alert_title_warning)
+            else -> context.getString(R.string.alert_title_homeos)
         }
     }
 

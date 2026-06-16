@@ -58,4 +58,35 @@
     <string name="channel_critical_desc">实时紧急告警，可绕过勿扰模式</string>
     <string name="push_cloud_update">HomeOS 云推送</string>
     <string name="push_hms_update">HomeOS 华为推送</string>
+
+    <!-- Privacy Policy Dialog -->
+    <string name="privacy_title">HomeOS 隐私协议与授权声明</string>
+    <string name="privacy_agree">同意并继续</string>
+    <string name="privacy_disagree">不同意并退出</string>
+
+    <!-- Demo Mode Dialog -->
+    <string name="demo_title">HomeOS PRO 演示沙盒体验指南</string>
+    <string name="demo_intro">欢迎体验 HomeOS 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项：</string>
+    <string name="demo_loading_title">正在安全认证演示系统…</string>
+    <string name="demo_loading_subtitle">正在为您跨国建立安全加密信道</string>
+    <string name="demo_enter_button">同意并立即进入体验</string>
+    <string name="demo_feature1_title">尊享 PRO 全功能体验</string>
+    <string name="demo_feature1_desc">本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！</string>
+    <string name="demo_feature2_title">零风险仿真沙盒运行</string>
+    <string name="demo_feature2_desc">此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！</string>
+    <string name="demo_feature3_title">布局只读保护限制</string>
+    <string name="demo_feature3_desc">为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。</string>
+    <string name="demo_feature4_title">如何退出演示模式</string>
+    <string name="demo_feature4_desc">提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择「一键退出演示模式」即可。</string>
+    <string name="btn_quick_demo">一键进入演示系统</string>
+    <string name="btn_exit_demo">一键退出演示系统</string>
+    <string name="btn_wipe_data">擦除数据并退出</string>
+
+    <!-- Alert Notification Titles -->
+    <string name="alert_title_security">安防告警</string>
+    <string name="alert_title_device">设备告警</string>
+    <string name="alert_title_rule">规则告警</string>
+    <string name="alert_title_emergency">紧急通知</string>
+    <string name="alert_title_warning">警告通知</string>
+    <string name="alert_title_homeos">HomeOS 通知</string>
 </resources>

@@ -10,14 +10,6 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# Keep Socket.IO classes intact
--keep class io.socket.** { *; }
--keep class okhttp3.** { *; }
--keep class okio.** { *; }
--dontwarn io.socket.**
--dontwarn okhttp3.**
--dontwarn okio.**
-
 # Keep Firebase and HMS classes
 -keep class com.google.firebase.** { *; }
 -keep class com.huawei.hms.** { *; }
@@ -29,11 +21,3 @@
     *** get*();
     *** set*(***);
 }
-
-# Keep Gson serialized data classes (OTA release metadata)
--keep class com.homeos.app.update.GitHubRelease { *; }
--keep class com.homeos.app.update.GitHubAsset { *; }
--keepattributes Signature
--keepattributes *Annotation*
--dontwarn sun.misc.**
--keep class com.google.gson.** { *; }
