@@ -2,10 +2,6 @@
 
 > 工业级安卓伴侣与壁挂式大屏 Kiosk 控制端 / Industrial-grade Android Companion & Wall-mounted Kiosk Display Wrapper.
 
-[![平台](https://img.shields.io/badge/Platform-Android%208.0+-00C853?style=for-the-badge&logo=android)](https://developer.android.com)
-[![构建](https://img.shields.io/badge/Build-Gradle%20Kotlin%20DSL-6200EE?style=for-the-badge&logo=gradle)](https://gradle.org)
-[![版本](https://img.shields.io/badge/Version-2026.06.15.07-FF1744?style=for-the-badge)](https://github.com/pcskycn/HomeOS-Android)
-
 `HomeOS-Android` 是专为 **HomeOS 智能家居管理终端** 量身打造的高性能原生 Kotlin 容器。它不仅是一个高度加速的 Web 容器，更是一个集成了局域网智能漫游、多通道云推送（FCM / 华为 HMS）、硬件控制和断网自愈能力的工业级控制中心。
 
 ---
@@ -26,17 +22,22 @@
 * **双通道云推送**：集成 **Google FCM** 与 **华为 HMS Push Kit**（完美兼容 HarmonyOS 3/4 及国内无 GMS 环境），支持 App 被系统杀掉后的强行唤醒推送。
 
 ### 4. 零延迟动态多语言切换 / Dynamic i18n Engine
-* **即时无闪烁刷新**：在设置弹窗顶部集成紧凑的 `简/繁/EN` 三语胶囊按钮。点击时通过内存直译机制更新，**彻底告别 Activity 销毁重建导致的屏幕闪烁**。
+* **即时无闪烁刷新**：在设置弹窗顶部集成紧凑的 `简/EN` 双语胶囊按钮。点击时通过内存直译机制更新，**彻底告别 Activity 销毁重建导致的屏幕闪烁**。
 * **表单零数据丢失**：在切换语言时，用户当前正在填写的 IP 地址、用户名和密码等配置完美保留。
 
 ### 5. 安全隐私保护 / Security & Privacy
 * **隐私协议屏障**：首次启动时强制显示隐私协议，未同意前不会初始化任何第三方 SDK 或发起网络请求。
 * **硬件指纹认证**：使用 `ANDROID_ID` 的 SHA-256 哈希值作为设备唯一标识（HWID），用于 Pro 版授权验证。
 * **本地加密存储**：所有服务器凭据通过 SharedPreferences 加密存储，WebView 会话受系统沙盒保护。
+* **WebStorage 安全清理**：退出演示模式后彻底清空 LocalStorage/SessionStorage，避免使用危险的磁盘物理删除操作导致 Chromium 崩溃。
 
-### 6. OTA 自动更新 / Over-the-Air Updates
-* **双通道下载**：支持 GitHub Releases 自动检测更新，直连失败时自动切换加速通道。
-* **安全升级**：提供优雅的升级对话框，显示版本对比和更新日志。
+### 6. 窗口生命周期保护 / Window Lifecycle Safety
+* **BadTokenException 防护**：所有 `recreate()` 调用前均增加 `!isFinishing && !isDestroyed` 双重状态保护，规避在 Activity 销毁后操作失效的 Window Token 导致的闪退。
+* **安全时序控制**：先隐藏设置面板，再在安全回调中延迟触发重构重建，确保 UI 操作与 Activity 生命周期同步。
+
+### 7. 前台服务优化 / Foreground Service Optimization
+* **智能服务管理**：退出演示模式或擦除配置后，主动停止后台 WebSocket 长连接前台服务，避免无意义空跑。
+* **开机自启限制**：仅当设备已配置（`is_configured = true`）时才启动前台服务，节省未配置设备的系统资源。
 
 ---
 
@@ -106,7 +107,7 @@ HomeOSAPP/
 winget install EclipseAdoptium.Temurin.17.JDK
 
 # 进入项目目录
-cd e:\源码实例\HomeOS\HomeOSAPP
+cd HomeOSAPP
 
 # 编译 Debug 版本
 .\gradlew clean assembleDebug
