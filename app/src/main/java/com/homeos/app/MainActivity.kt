@@ -913,6 +913,13 @@ class MainActivity : AppCompatActivity() {
      * 绑定点击事件到模态控制元素。
      */
     private fun setupControlListeners() {
+        // 高级设置展开/折叠
+        binding.layoutAdvancedHeader.setOnClickListener {
+            val isExpanded = binding.layoutAdvancedContent.visibility == View.VISIBLE
+            binding.layoutAdvancedContent.visibility = if (isExpanded) View.GONE else View.VISIBLE
+            binding.txtAdvancedArrow.text = if (isExpanded) "▼" else "▲"
+        }
+
         binding.btnLangZhToggle.setOnClickListener {
             tempSelectedLang = "zh"
             updateLanguageToggleUI(tempSelectedLang)
