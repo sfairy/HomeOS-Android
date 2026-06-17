@@ -119,7 +119,7 @@ class MainActivity : AppCompatActivity() {
 
         // 检查是否已配置；如果未配置（或使用默认值），强制显示设置屏幕
         val isConfigured = sharedPreferences.getBoolean("is_configured", false)
-        if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:8501") {
+        if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://192.168.31.175:8126") {
             Log.i("MainActivity", "应用未配置或使用默认虚拟 URL。强制显示设置弹窗。")
             toggleSettingsOverlay(true)
         } else {

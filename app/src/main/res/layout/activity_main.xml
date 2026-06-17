@@ -193,7 +193,7 @@
                     android:textColorHint="@color/text_secondary"
                     app:hintTextColor="@color/neon_teal"
                     app:boxStrokeColor="@color/neon_teal"
-                    app:placeholderText="http://10.0.0.90:8125"
+                    app:placeholderText="http://192.168.31.175:8126"
                     app:placeholderTextColor="@color/text_secondary"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
