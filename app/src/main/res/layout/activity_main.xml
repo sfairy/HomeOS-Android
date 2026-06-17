@@ -215,7 +215,7 @@
                     android:textColorHint="@color/text_secondary"
                     app:hintTextColor="@color/neon_teal"
                     app:boxStrokeColor="@color/neon_teal"
-                    app:placeholderText="https://grid.yourdomain.com"
+                    app:placeholderText="https://homeos.yourdomain.com"
                     app:placeholderTextColor="@color/text_secondary"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 

@@ -3,7 +3,7 @@
     <string name="app_version">2026.06.15.07</string>
 
     <!-- Settings Screen -->
-    <string name="settings_title">HomeOS 伴侣端配置</string>
+    <string name="settings_title">HomeOS 智能家居</string>
     <string name="settings_desc">配置服务器路由与运行模式</string>
     <string name="section_server_config">服务器配置</string>
     <string name="section_advanced_settings">高级设置</string>
