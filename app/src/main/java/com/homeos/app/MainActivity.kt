@@ -224,13 +224,10 @@ class MainActivity : AppCompatActivity() {
                     1. 数据收集范围
                     我们仅收集运行所必需的本地配置信息，包括局域网/公网网关地址、用于身份校验的加密凭据，以及可选的推送服务（FCM/HMS）唯一标识符。
                     
-                    2. 硬件指纹与密钥审计
-                    为确保 Pro 版商业授权的安全性，我们会生成 Settings.Secure.ANDROID_ID 的 SHA-256 单向哈希值，作为本设备的唯一硬件指纹（HWID）。该哈希值不可反向还原，仅用于 RSA 安全认证与心跳审计，绝不包含任何个人身份隐私。
-                    
-                    3. 本地化安全存储
+                    2. 本地化安全存储
                     您的所有服务器账号与密码均通过 Android SharedPreferences 进行本机加密隔离存储。WebView 中的会话缓存与 Token 同样受到系统沙盒保护。
                     
-                    4. 数据零共享
+                    3. 数据零共享
                     本应用为 100% 私有化或直连您的专属网关运行。我们承诺绝不会向任何第三方机构或个人透露、销售或共享您的任何配置、密钥或传感器遥测数据。
 
                     点击"同意并继续"即代表您接受以上隐私协议与服务条款，我们将为您解锁完整的赛博科技中控体验。
@@ -242,13 +239,10 @@ class MainActivity : AppCompatActivity() {
                     1. 数据收集范围
                     我们仅收集运行所必需的本地配置信息，包括局域网/公网网关地址、用于身份校验的加密凭据，以及可选的推送服务（FCM/HMS）唯一标识符。
 
-                    2. 硬件指纹与审计
-                    为确保 Pro 商业授权的安全性，我们生成 Settings.Secure.ANDROID_ID 的单向 SHA-256 哈希值作为您的硬件指纹（HWID）。此哈希值无法反向还原，仅用于安全 RSA 握手和心跳审计。
-
-                    3. 加密本地存储
+                    2. 加密本地存储
                     所有服务器凭据和密码均通过 SharedPreferences 进行加密隔离存储。WebView 会话缓存和令牌同样受到系统沙盒保护。
 
-                    4. 零第三方共享
+                    3. 零第三方共享
                     HomeOS 作为 100% 私有、直连您智能家居的工具运作。我们承诺绝不会与任何第三方分享、出售或披露您的网关信息、遥测数据或密钥。
 
                     点击"同意并继续"即代表您接受这些条款，我们将为您解锁完整的智能家居体验。
@@ -444,14 +438,14 @@ class MainActivity : AppCompatActivity() {
         setAppLocale(this, newLang)
 
         updateScreenLocking()
-        
-        // 重新创建活动以立即应用语言更改
+
+        // 使用新地址重启 WebSocket 后台监控服务
+        startServices()
+
+        // 重新创建活动以立即应用语言更改（必须放在最后，recreate 后当前 Activity 即销毁）
         if (!isFinishing && !isDestroyed) {
             recreate()
         }
-        
-        // 使用新地址重启 WebSocket 后台监控服务
-        startServices()
     }
 
     /**
@@ -959,11 +953,16 @@ class MainActivity : AppCompatActivity() {
 
             // 如果用户选择跳过验证或未输入凭据，直接保存
             if (isAnyway || userStr.isEmpty()) {
-                saveConfig(
-                    lanStr, wanStr, userStr, passStr, "", "", isKiosk, selectedLang,
-                    parsedDesignWidth, parsedDesignHeight
-                )
+                // 先隐藏设置面板，再在安全回调中触发重构，避免在 Activity 销毁后操作失效的 Window Token
                 toggleSettingsOverlay(false)
+                binding.root.postDelayed({
+                    if (!isFinishing && !isDestroyed) {
+                        saveConfig(
+                            lanStr, wanStr, userStr, passStr, "", "", isKiosk, selectedLang,
+                            parsedDesignWidth, parsedDesignHeight
+                        )
+                    }
+                }, 150)
                 return@setOnClickListener
             }
 
@@ -990,22 +989,27 @@ class MainActivity : AppCompatActivity() {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#00FF66"))
                         binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_success)
 
-                        saveConfig(
-                            lanStr,
-                            wanStr,
-                            userStr,
-                            passStr,
-                            finalResult.authToken,
-                            finalResult.csrfToken,
-                            isKiosk,
-                            selectedLang,
-                            parsedDesignWidth,
-                            parsedDesignHeight
-                        )
-
-                        binding.txtVerificationStatus.postDelayed({
-                            toggleSettingsOverlay(false)
-                            binding.btnCancelSettings.visibility = View.VISIBLE
+                        // 先隐藏设置面板，再在安全回调中触发重构，避免在 Activity 销毁后操作失效的 Window Token
+                        binding.root.postDelayed({
+                            if (!isFinishing && !isDestroyed) {
+                                toggleSettingsOverlay(false)
+                                binding.root.postDelayed({
+                                    if (!isFinishing && !isDestroyed) {
+                                        saveConfig(
+                                            lanStr,
+                                            wanStr,
+                                            userStr,
+                                            passStr,
+                                            finalResult.authToken,
+                                            finalResult.csrfToken,
+                                            isKiosk,
+                                            selectedLang,
+                                            parsedDesignWidth,
+                                            parsedDesignHeight
+                                        )
+                                    }
+                                }, 150)
+                            }
                         }, 500)
                     } else {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#FF3333"))
@@ -1048,19 +1052,22 @@ class MainActivity : AppCompatActivity() {
                             } catch (e: java.lang.Exception) {
                                 e.printStackTrace()
                             }
+                            // 先隐藏设置面板，再在安全回调中触发重构，避免在 Activity 销毁后操作失效的 Window Token
                             toggleSettingsOverlay(false)
-                            binding.btnCancelSettings.visibility = View.VISIBLE
-
-                            saveConfig(
-                                "https://demo2.ihomeos.cn",
-                                "https://demo2.ihomeos.cn",
-                                "admin",
-                                "123456",
-                                finalResult.authToken,
-                                finalResult.csrfToken,
-                                isKiosk,
-                                tempSelectedLang
-                            )
+                            binding.root.postDelayed({
+                                if (!isFinishing && !isDestroyed) {
+                                    saveConfig(
+                                        "https://demo2.ihomeos.cn",
+                                        "https://demo2.ihomeos.cn",
+                                        "admin",
+                                        "123456",
+                                        finalResult.authToken,
+                                        finalResult.csrfToken,
+                                        isKiosk,
+                                        tempSelectedLang
+                                    )
+                                }
+                            }, 150)
                         } else {
                             val scrollView = dialog.findViewById<android.widget.ScrollView>(10001)
                             val buttonsLayout = dialog.findViewById<android.widget.LinearLayout>(10002)
