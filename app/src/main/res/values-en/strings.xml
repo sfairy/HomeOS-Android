@@ -5,6 +5,8 @@
     <!-- Settings Screen -->
     <string name="settings_title">HomeOS Companion Settings</string>
     <string name="settings_desc">Configure server routing and operational modes</string>
+    <string name="section_server_config">Server Configuration</string>
+    <string name="section_advanced_settings">Advanced Settings</string>
     <string name="server_lan_url">Local LAN Server URL</string>
     <string name="server_wan_url">Cloud WAN Server URL</string>
     <string name="username">Username</string>
