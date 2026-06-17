@@ -232,20 +232,20 @@ class MainActivity : AppCompatActivity() {
 
                     点击"同意并继续"即代表您接受以上隐私协议与服务条款，我们将为您解锁完整的赛博科技中控体验。
                 """.trimIndent() else """
-                    欢迎使用 HomeOS 伴侣终端！我们高度重视您的个人隐私与数据安全。在您同意本协议前，应用程序不会初始化任何第三方 SDK 或发起任何网络通讯。
+                    Welcome to HomeOS Companion Terminal! We highly value your personal privacy and data security. Before you agree to this policy, the application will not initialize any third-party SDKs or initiate any network communications.
 
-                    请仔细阅读以下核心条款：
+                    Please read the following key terms carefully:
 
-                    1. 数据收集范围
-                    我们仅收集运行所必需的本地配置信息，包括局域网/公网网关地址、用于身份校验的加密凭据，以及可选的推送服务（FCM/HMS）唯一标识符。
+                    1. Data Collection Scope
+                    We only collect locally stored configuration information necessary for operation, including LAN/WAN gateway addresses, encrypted credentials for identity verification, and optional push service (FCM/HMS) unique identifiers.
 
-                    2. 加密本地存储
-                    所有服务器凭据和密码均通过 SharedPreferences 进行加密隔离存储。WebView 会话缓存和令牌同样受到系统沙盒保护。
+                    2. Encrypted Local Storage
+                    All server credentials and passwords are encrypted and stored in isolated SharedPreferences. WebView session caches and tokens are equally protected by the Android system sandbox.
 
-                    3. 零第三方共享
-                    HomeOS 作为 100% 私有、直连您智能家居的工具运作。我们承诺绝不会与任何第三方分享、出售或披露您的网关信息、遥测数据或密钥。
+                    3. Zero Third-Party Sharing
+                    HomeOS operates as a 100% private tool directly connected to your smart home. We promise to never share, sell, or disclose your gateway information, telemetry data, or keys with any third party.
 
-                    点击"同意并继续"即代表您接受这些条款，我们将为您解锁完整的智能家居体验。
+                    By clicking "Agree and Continue", you accept these terms and we will unlock the complete smart home experience for you.
                 """.trimIndent()
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))

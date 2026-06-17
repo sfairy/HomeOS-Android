@@ -97,22 +97,38 @@
                     android:orientation="vertical"
                     android:padding="28dp">
 
+                <!-- Brand Header -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical">
 
-                    <TextView
-                        android:id="@+id/txtSettingsTitle"
+                    <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="@string/settings_title"
-                        android:textColor="@color/neon_teal"
-                        android:textSize="20sp"
-                        android:fontFamily="sans-serif-medium"
-                        android:letterSpacing="0.02" />
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/txtSettingsTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_title"
+                            android:textColor="@color/neon_teal"
+                            android:textSize="22sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:letterSpacing="0.02" />
+
+                        <TextView
+                            android:id="@+id/txtSettingsDesc"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="@string/settings_desc"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
                     <!-- Compact Language Switcher Segmented Toggle -->
                     <LinearLayout
@@ -151,19 +167,20 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <!-- Server Configuration Section -->
                 <TextView
-                    android:id="@+id/txtSettingsDesc"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/settings_desc"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:layout_marginTop="24dp"
+                    android:text="@string/section_server_config"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:fontFamily="sans-serif-medium" />
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="8dp"
                     android:layout_marginBottom="16dp"
                     android:background="#1AFFFFFF" />
 
@@ -263,118 +280,166 @@
                     android:visibility="gone"
                     android:gravity="center_horizontal" />
 
-                <!-- Configured Mode Selection -->
-                <TextView
-                    android:id="@+id/txtDeviceModeLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:text="@string/device_mode"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
-
-                <RadioGroup
-                    android:id="@+id/radioGroupMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal">
-
-                    <RadioButton
-                        android:id="@+id/radioKiosk"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/mode_kiosk"
-                        android:textColor="@color/text_primary"
-                        android:buttonTint="@color/neon_teal"
-                        android:checked="true" />
-
-                    <RadioButton
-                        android:id="@+id/radioCompanion"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="24dp"
-                        android:text="@string/mode_companion"
-                        android:textColor="@color/text_primary"
-                        android:buttonTint="@color/neon_teal" />
-                </RadioGroup>
-
-                <!-- Design Canvas Size (for proportional scaling) -->
-                <TextView
-                    android:id="@+id/txtDesignCanvasLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:text="@string/design_canvas"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
-
+                <!-- Advanced Settings Collapsible Section -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal">
+                    android:layout_marginTop="20dp"
+                    android:orientation="vertical"
+                    android:background="#0DFFFFFF"
+                    android:padding="16dp">
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/layoutDesignWidth"
-                        android:layout_width="0dp"
+                    <!-- Advanced Settings Header (Clickable Toggle) -->
+                    <LinearLayout
+                        android:id="@+id/layoutAdvancedHeader"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:hint="@string/design_width"
-                        android:textColorHint="@color/text_secondary"
-                        app:hintTextColor="@color/neon_teal"
-                        app:boxStrokeColor="@color/neon_teal"
-                        app:placeholderText="3200"
-                        app:placeholderTextColor="@color/text_secondary"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:background="?attr/selectableItemBackground">
 
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/inputDesignWidth"
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/section_advanced_settings"
+                            android:textColor="@color/text_primary"
+                            android:textSize="13sp"
+                            android:fontFamily="sans-serif-medium" />
+
+                        <TextView
+                            android:id="@+id/txtAdvancedArrow"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="▼"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
+                    <!-- Advanced Settings Content (Collapsible) -->
+                    <LinearLayout
+                        android:id="@+id/layoutAdvancedContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone"
+                        android:layout_marginTop="16dp">
+
+                        <!-- Configured Mode Selection -->
+                        <TextView
+                            android:id="@+id/txtDeviceModeLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/device_mode"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <RadioGroup
+                            android:id="@+id/radioGroupMode"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:textColor="@color/text_primary"
-                            android:inputType="number" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                            android:layout_marginTop="8dp"
+                            android:orientation="horizontal">
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/layoutDesignHeight"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="12dp"
-                        android:hint="@string/design_height"
-                        android:textColorHint="@color/text_secondary"
-                        app:hintTextColor="@color/neon_teal"
-                        app:boxStrokeColor="@color/neon_teal"
-                        app:placeholderText="2136"
-                        app:placeholderTextColor="@color/text_secondary"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                            <RadioButton
+                                android:id="@+id/radioKiosk"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/mode_kiosk"
+                                android:textColor="@color/text_primary"
+                                android:buttonTint="@color/neon_teal"
+                                android:checked="true" />
 
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/inputDesignHeight"
+                            <RadioButton
+                                android:id="@+id/radioCompanion"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="24dp"
+                                android:text="@string/mode_companion"
+                                android:textColor="@color/text_primary"
+                                android:buttonTint="@color/neon_teal" />
+                        </RadioGroup>
+
+                        <!-- Design Canvas Size (for proportional scaling) -->
+                        <TextView
+                            android:id="@+id/txtDesignCanvasLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="20dp"
+                            android:text="@string/design_canvas"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:textColor="@color/text_primary"
-                            android:inputType="number" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                            android:layout_marginTop="8dp"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:id="@+id/layoutDesignWidth"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:hint="@string/design_width"
+                                android:textColorHint="@color/text_secondary"
+                                app:hintTextColor="@color/neon_teal"
+                                app:boxStrokeColor="@color/neon_teal"
+                                app:placeholderText="3200"
+                                app:placeholderTextColor="@color/text_secondary"
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/inputDesignWidth"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/text_primary"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:id="@+id/layoutDesignHeight"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginStart="12dp"
+                                android:hint="@string/design_height"
+                                android:textColorHint="@color/text_secondary"
+                                app:hintTextColor="@color/neon_teal"
+                                app:boxStrokeColor="@color/neon_teal"
+                                app:placeholderText="2136"
+                                app:placeholderTextColor="@color/text_secondary"
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/inputDesignHeight"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/text_primary"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+                    </LinearLayout>
                 </LinearLayout>
 
 
 
-                <!-- Buttons -->
+                <!-- Demo Mode Buttons Row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
+                    android:layout_marginTop="24dp"
                     android:orientation="horizontal"
-                    android:gravity="end">
+                    android:gravity="start">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnQuickDemo"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="一键进入演示系统"
+                        android:text="@string/btn_quick_demo"
                         android:textColor="@color/neon_teal"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -390,7 +455,7 @@
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="一键退出演示系统"
+                        android:text="@string/btn_exit_demo"
                         android:textColor="#FF3333"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -408,7 +473,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
-                        android:text="擦除数据并退出"
+                        android:text="@string/btn_wipe_data"
                         android:textColor="#FF3333"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -419,11 +484,15 @@
                         app:iconTint="#FF3333"
                         app:iconPadding="4dp"
                         android:visibility="gone" />
+                </LinearLayout>
 
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
-                        android:layout_weight="1" />
+                <!-- Action Buttons Row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:orientation="horizontal"
+                    android:gravity="end">
 
                     <Button
                         android:id="@+id/btnCancelSettings"
