@@ -517,6 +517,13 @@ class MainActivity : AppCompatActivity() {
             setSupportZoom(false)
             builtInZoomControls = false
             displayZoomControls = false
+
+            // 性能优化：启用离屏预合成，提升滚动和动画帧率
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                setOffscreenPreRaster(true)
+            }
+            // 设置高渲染优先级
+            setRenderPriority(WebSettings.RenderPriority.HIGH)
         }
 
         binding.webView.setInitialScale(calculateAspectRatioScale())
@@ -619,6 +626,9 @@ class MainActivity : AppCompatActivity() {
     private fun injectFixedViewport() {
         val js = """
             (function(){
+              if(window.__homeosViewportInjected) return;
+              window.__homeosViewportInjected = true;
+              
               var W=$designWidth;
               function apply(){
                 var m=document.querySelector('meta[name=viewport]');
@@ -628,14 +638,22 @@ class MainActivity : AppCompatActivity() {
                 if(!document.getElementById('homeos-touch-fix')){
                   var s=document.createElement('style');
                   s.id='homeos-touch-fix';
-                  s.textContent='html,body{-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;}';
+                  s.textContent='html,body{-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;will-change:transform;}';
                   document.head.appendChild(s);
                 }
               }
               apply();
+              
               if(!window.__homeosVpObs){
-                window.__homeosVpObs=new MutationObserver(apply);
-                window.__homeosVpObs.observe(document.head,{childList:true,subtree:true,attributes:true});
+                var lastCheck = 0;
+                window.__homeosVpObs = function(timestamp) {
+                  if (timestamp - lastCheck > 1000) {
+                    apply();
+                    lastCheck = timestamp;
+                  }
+                  requestAnimationFrame(window.__homeosVpObs);
+                };
+                requestAnimationFrame(window.__homeosVpObs);
               }
             })();
         """.trimIndent()
@@ -836,8 +854,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (handleAdminGesture(ev)) {
-            return true
+        // 优化：只在 ACTION_DOWN 和 ACTION_POINTER_DOWN 时检测手势，避免滑动时重复检测
+        val actionMasked = ev.actionMasked
+        if (actionMasked == MotionEvent.ACTION_DOWN || actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+            if (handleAdminGesture(ev)) {
+                return true
+            }
         }
         // 加载遮罩显示时吞掉触摸，防止穿透到下层 WebView
         if (binding.loadingOverlay.visibility == View.VISIBLE) {
@@ -897,8 +919,6 @@ class MainActivity : AppCompatActivity() {
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
         
-        binding.btnQuickDemo.text = res.getString(R.string.btn_quick_demo)
-        binding.btnExitDemo.text = res.getString(R.string.btn_exit_demo)
         binding.btnWipeData.text = res.getString(R.string.btn_wipe_data)
         
         // 处理"保存配置"与"强制保存"的切换
@@ -1050,90 +1070,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnQuickDemo.setOnClickListener {
-            showDemoModeIntroductionDialog { dialog ->
-                // 禁用设置覆盖层按钮以防止二次操作
-                binding.btnSaveSettings.isEnabled = false
-                binding.btnCancelSettings.isEnabled = false
-                binding.btnQuickDemo.isEnabled = false
-
-                // 2. 异步静默网络握手
-                executor.execute {
-                    val loginResult = HomeOSAuth.performLogin("https://demo2.ihomeos.cn", "admin", "123456")
-                    val finalResult = loginResult
-
-                    runOnUiThread {
-                        binding.btnSaveSettings.isEnabled = true
-                        binding.btnCancelSettings.isEnabled = true
-                        binding.btnQuickDemo.isEnabled = true
-
-                        if (finalResult.success) {
-                            val isKiosk = binding.radioKiosk.isChecked
-                            sharedPreferences.edit().putBoolean("is_demo_mode", true).apply()
-
-                            try {
-                                dialog.dismiss()
-                            } catch (e: java.lang.Exception) {
-                                e.printStackTrace()
-                            }
-                            // 先隐藏设置面板，再在安全回调中触发重构，避免在 Activity 销毁后操作失效的 Window Token
-                            toggleSettingsOverlay(false)
-                            binding.root.postDelayed({
-                                if (!isFinishing && !isDestroyed) {
-                                    saveConfig(
-                                        "https://demo2.ihomeos.cn",
-                                        "https://demo2.ihomeos.cn",
-                                        "admin",
-                                        "123456",
-                                        finalResult.authToken,
-                                        finalResult.csrfToken,
-                                        isKiosk,
-                                        tempSelectedLang
-                                    )
-                                }
-                            }, 150)
-                        } else {
-                            val scrollView = dialog.findViewById<android.widget.ScrollView>(10001)
-                            val buttonsLayout = dialog.findViewById<android.widget.LinearLayout>(10002)
-                            val loadingLayout = dialog.findViewById<android.widget.LinearLayout>(10003)
-                            val dialogErrorText = dialog.findViewById<android.widget.TextView>(10004)
-
-                            scrollView?.visibility = android.view.View.VISIBLE
-                            buttonsLayout?.visibility = android.view.View.VISIBLE
-                            loadingLayout?.visibility = android.view.View.GONE
-                            dialogErrorText?.visibility = android.view.View.VISIBLE
-                            dialogErrorText?.text = getString(R.string.enter_demo_failed) +
-                                (finalResult.errorMessage ?: getString(R.string.unknown_error))
-                        }
-                    }
-                }
-            }
-        }
-
-        binding.btnExitDemo.setOnClickListener {
-            sharedPreferences.edit().apply {
-                remove("server_lan_url")
-                remove("server_wan_url")
-                remove(HomeOSAuth.KEY_AUTH_TOKEN)
-                remove(HomeOSAuth.KEY_CSRF_TOKEN)
-                putBoolean("is_demo_mode", false)
-                putBoolean("is_configured", false)
-                apply()
-            }
-            HomeOSAuth.clearAuthTokens(sharedPreferences)
-            // 停止后台 WebSocket 服务以释放资源
-            stopService(Intent(this, SocketService::class.java))
-            clearAppCacheAndWebView(this)
-            if (!isFinishing && !isDestroyed) {
-                recreate()
-            }
-        }
-
         binding.btnWipeData.setOnClickListener {
             sharedPreferences.edit().apply {
                 remove("server_lan_url")
                 remove("server_wan_url")
-                putBoolean("is_demo_mode", false)
                 putBoolean("is_configured", false)
                 apply()
             }
@@ -1145,304 +1085,6 @@ class MainActivity : AppCompatActivity() {
                 recreate()
             }
         }
-    }
-
-    /**
-     * 显示一个精美的高端弹窗，解释演示模式、PRO 功能和限制。
-     */
-    private fun showDemoModeIntroductionDialog(onConfirm: (android.app.Dialog) -> Unit) {
-        val res = getLocalizedResources(this, tempSelectedLang)
-        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        dialog.setCancelable(false)
-        
-        // 深黑曜石背景布局
-        val container = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#08080C"))
-            setPadding(48, 48, 48, 48)
-            gravity = android.view.Gravity.CENTER_HORIZONTAL
-        }
-        
-        // 1. 精美的赛博风格握手加载器（初始状态为隐藏）
-        val loadingLayout = android.widget.LinearLayout(this).apply {
-            id = 10003
-            orientation = android.widget.LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-            visibility = android.view.View.GONE
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                0
-            ).apply {
-                weight = 1f
-            }
-            
-            val progressBar = android.widget.ProgressBar(this@MainActivity).apply {
-                indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E5FF"))
-            }
-            addView(progressBar)
-            
-            val loadingText = android.widget.TextView(this@MainActivity).apply {
-                text = res.getString(R.string.demo_loading_title)
-                textSize = 14f
-                setTextColor(Color.parseColor("#00E5FF"))
-                typeface = android.graphics.Typeface.MONOSPACE
-                gravity = android.view.Gravity.CENTER
-                setPadding(0, 32, 0, 8)
-            }
-            addView(loadingText)
-            
-            val loadingSubText = android.widget.TextView(this@MainActivity).apply {
-                text = res.getString(R.string.demo_loading_subtitle)
-                textSize = 11f
-                setTextColor(Color.GRAY)
-                typeface = android.graphics.Typeface.MONOSPACE
-                gravity = android.view.Gravity.CENTER
-            }
-            addView(loadingSubText)
-        }
-        
-        // 图标/头部区域
-        val headerView = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER_HORIZONTAL
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = 40
-            }
-        }
-        
-        val shieldIcon = android.widget.TextView(this).apply {
-            text = "⚡"
-            textSize = 48f
-            gravity = android.view.Gravity.CENTER
-        }
-        headerView.addView(shieldIcon)
-        
-        val titleText = android.widget.TextView(this).apply {
-            text = "\uD83D\uDCA1 ${res.getString(R.string.demo_title)}"
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = android.view.Gravity.CENTER
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = 16
-            }
-        }
-        headerView.addView(titleText)
-        
-        val subtitleText = android.widget.TextView(this).apply {
-            text = "HomeOS-PRO-SANDBOX-VERIFICATION"
-            textSize = 9f
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = android.graphics.Typeface.MONOSPACE
-            letterSpacing = 0.2f
-            gravity = android.view.Gravity.CENTER
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = 8
-            }
-        }
-        headerView.addView(subtitleText)
-        
-        container.addView(headerView)
-        
-        // 可滚动内容区域
-        val scrollView = android.widget.ScrollView(this).apply {
-            id = 10001
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                0
-            ).apply {
-                weight = 1f
-                topMargin = 32
-                bottomMargin = 32
-            }
-            isVerticalScrollBarEnabled = false
-        }
-        
-        val contentLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
-            val shape = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor("#0DFFFFFF"))
-                setStroke(2, Color.parseColor("#2600E5FF"))
-                cornerRadius = 24f
-            }
-            background = shape
-        }
-        
-        val introText = android.widget.TextView(this).apply {
-            text = res.getString(R.string.demo_intro)
-            textSize = 13f
-            setTextColor(Color.parseColor("#8E8E93"))
-            setLineSpacing(0f, 1.2f)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = 24
-            }
-        }
-        contentLayout.addView(introText)
-        
-        // 辅助函数：添加列表项
-        fun addFeatureItem(number: String, title: String, desc: String) {
-            val itemLayout = android.widget.LinearLayout(this).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = 20
-                }
-            }
-            
-            val numView = android.widget.TextView(this).apply {
-                text = number
-                textSize = 15f
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    rightMargin = 16
-                }
-            }
-            itemLayout.addView(numView)
-            
-            val detailsLayout = android.widget.LinearLayout(this).apply {
-                orientation = android.widget.LinearLayout.VERTICAL
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    0,
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    weight = 1f
-                }
-            }
-            
-            val itemTitle = android.widget.TextView(this).apply {
-                text = title
-                textSize = 14f
-                setTextColor(Color.WHITE)
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = 4
-                }
-            }
-            detailsLayout.addView(itemTitle)
-            
-            val itemDesc = android.widget.TextView(this).apply {
-                text = desc
-                textSize = 12f
-                setTextColor(Color.parseColor("#8E8E93"))
-                setLineSpacing(0f, 1.2f)
-            }
-            detailsLayout.addView(itemDesc)
-            
-            itemLayout.addView(detailsLayout)
-            contentLayout.addView(itemLayout)
-        }
-        
-        addFeatureItem("1\uFE0F\u20E3", res.getString(R.string.demo_feature1_title), res.getString(R.string.demo_feature1_desc))
-        addFeatureItem("2\uFE0F\u20E3", res.getString(R.string.demo_feature2_title), res.getString(R.string.demo_feature2_desc))
-        addFeatureItem("3\uFE0F\u20E3", res.getString(R.string.demo_feature3_title), res.getString(R.string.demo_feature3_desc))
-        addFeatureItem("\u2699\uFE0F", res.getString(R.string.demo_feature4_title), res.getString(R.string.demo_feature4_desc))
-        
-        scrollView.addView(contentLayout)
-        container.addView(scrollView)
-        container.addView(loadingLayout)
-        
-        // 对话框内的错误消息文本
-        val errorText = android.widget.TextView(this).apply {
-            id = 10004
-            textSize = 11f
-            setTextColor(Color.parseColor("#FF3333"))
-            gravity = android.view.Gravity.CENTER
-            visibility = android.view.View.GONE
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = 16
-            }
-        }
-        container.addView(errorText)
-        
-        // 按钮区域
-        val buttonsLayout = android.widget.LinearLayout(this).apply {
-            id = 10002
-            orientation = android.widget.LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER_HORIZONTAL
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = 16
-            }
-        }
-        
-        val enterButton = android.widget.Button(this).apply {
-            text = res.getString(R.string.demo_enter_button)
-            textSize = 14f
-            setTextColor(Color.BLACK)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            
-            // 赛博青色渐变背景
-            val btnShape = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.parseColor("#00E5FF"), Color.parseColor("#0086FF"))
-            ).apply {
-                cornerRadius = 16f
-            }
-            background = btnShape
-            
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                120
-            ).apply {
-                bottomMargin = 24
-            }
-            
-            setOnClickListener {
-                // 显示加载器，隐藏内容
-                scrollView.visibility = android.view.View.GONE
-                buttonsLayout.visibility = android.view.View.GONE
-                errorText.visibility = android.view.View.GONE
-                loadingLayout.visibility = android.view.View.VISIBLE
-                
-                onConfirm(dialog)
-            }
-        }
-        buttonsLayout.addView(enterButton)
-        
-        val cancelButton = android.widget.TextView(this).apply {
-            text = res.getString(R.string.cancel)
-            textSize = 13f
-            setTextColor(Color.parseColor("#8E8E93"))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = android.view.Gravity.CENTER
-            setPadding(24, 24, 24, 24)
-            isClickable = true
-            
-            setOnClickListener {
-                dialog.dismiss()
-            }
-        }
-        buttonsLayout.addView(cancelButton)
-        
-        container.addView(buttonsLayout)
-        
-        dialog.setContentView(container)
-        dialog.show()
     }
 
     /**
@@ -1527,23 +1169,27 @@ class MainActivity : AppCompatActivity() {
             binding.txtVerificationStatus.visibility = View.GONE
             binding.btnCancelSettings.visibility = if (sharedPreferences.getBoolean("is_configured", false)) View.VISIBLE else View.GONE
             
-            val isDemo = sharedPreferences.getBoolean("is_demo_mode", false)
-            if (isDemo) {
-                binding.btnQuickDemo.visibility = View.GONE
-                binding.btnExitDemo.visibility = View.VISIBLE
-                binding.btnWipeData.visibility = View.GONE
-            } else {
-                binding.btnQuickDemo.visibility = View.VISIBLE
-                binding.btnExitDemo.visibility = View.GONE
-                val isConfigured = sharedPreferences.getBoolean("is_configured", false)
-                binding.btnWipeData.visibility = if (isConfigured) View.VISIBLE else View.GONE
-            }
+            val isConfigured = sharedPreferences.getBoolean("is_configured", false)
+            binding.btnWipeData.visibility = if (isConfigured) View.VISIBLE else View.GONE
 
             binding.settingsOverlay.visibility = View.VISIBLE
-            binding.settingsOverlay.alpha = 1f
+            // 优化：使用平滑淡入动画
+            binding.settingsOverlay.animate()
+                .alpha(1f)
+                .setDuration(200)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
         } else {
-            binding.settingsOverlay.visibility = View.GONE
-            applySystemImmersiveMode()
+            // 优化：使用平滑淡出动画
+            binding.settingsOverlay.animate()
+                .alpha(0f)
+                .setDuration(150)
+                .setInterpolator(android.view.animation.AccelerateInterpolator())
+                .withEndAction {
+                    binding.settingsOverlay.visibility = View.GONE
+                    applySystemImmersiveMode()
+                }
+                .start()
         }
     }
 

@@ -23,6 +23,7 @@ class NotificationOrchestrator(private val context: Context) {
 
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    private var wakeLock: PowerManager.WakeLock? = null  // 优化：复用 WakeLock 实例
 
     companion object {
         const val CHANNEL_CRITICAL = "homeos_channel_critical"
@@ -229,18 +230,23 @@ class NotificationOrchestrator(private val context: Context) {
      */
     private fun wakeScreen() {
         try {
-            val wakeLock = powerManager.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                        PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                        PowerManager.ON_AFTER_RELEASE,
-                "HomeOS:EmergencyWakeScreen"
-            )
-            // 获取唤醒锁一小段时间来打开屏幕，然后立即释放
-            wakeLock.acquire(30000L)
+            // 优化：复用 WakeLock 实例，避免重复创建
+            if (wakeLock == null) {
+                wakeLock = powerManager.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                            PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                            PowerManager.ON_AFTER_RELEASE,
+                    "HomeOS:EmergencyWakeScreen"
+                )
+            }
+            // 优化：缩短唤醒时间从 30 秒到 10 秒，减少电量消耗
+            wakeLock?.acquire(10000L)
             // ON_AFTER_RELEASE 标志会在释放后短暂保持屏幕开启，因此我们立即释放
             try {
-                if (wakeLock.isHeld) {
-                    wakeLock.release()
+                wakeLock?.let {
+                    if (it.isHeld) {
+                        it.release()
+                    }
                 }
             } catch (e: Exception) {
                 Log.w("Orchestrator", "WakeLock 释放失败（可能已释放）: ${e.message}")

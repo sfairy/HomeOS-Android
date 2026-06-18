@@ -426,46 +426,13 @@
 
 
 
-                <!-- Demo Mode Buttons Row -->
+                <!-- Action Buttons Row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="24dp"
                     android:orientation="horizontal"
                     android:gravity="start">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnQuickDemo"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/btn_quick_demo"
-                        android:textColor="@color/neon_teal"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        app:strokeColor="@color/neon_teal"
-                        app:strokeWidth="1.5dp"
-                        app:cornerRadius="6dp"
-                        app:icon="@android:drawable/ic_media_play"
-                        app:iconTint="@color/neon_teal"
-                        app:iconPadding="4dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnExitDemo"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/btn_exit_demo"
-                        android:textColor="#FF3333"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        app:strokeColor="#FF3333"
-                        app:strokeWidth="1.5dp"
-                        app:cornerRadius="6dp"
-                        app:icon="@android:drawable/ic_menu_close_clear_cancel"
-                        app:iconTint="#FF3333"
-                        app:iconPadding="4dp"
-                        android:visibility="gone" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnWipeData"

@@ -46,7 +46,6 @@
     <string name="export_save_config">Export &amp; Save Configuration</string>
     <string name="export_failed">Export failed: %1$s</string>
     <string name="mfa_required_suffix"> (MFA required)</string>
-    <string name="enter_demo_failed">Failed to enter demo: </string>
     <string name="unknown_error">Unknown error</string>
     <string name="install_allow_unknown">Please allow unknown app installation and retry</string>
     <string name="install_failed">Installation failed: %1$s</string>
@@ -69,22 +68,6 @@
     <string name="privacy_agree">Agree and Continue</string>
     <string name="privacy_disagree">Decline and Exit</string>
 
-    <!-- Demo Mode Dialog -->
-    <string name="demo_title">HomeOS PRO Demo Sandbox Guide</string>
-    <string name="demo_intro">Welcome to the HomeOS companion terminal! You are about to enter the public demo sandbox. Please note the following:</string>
-    <string name="demo_loading_title">Authenticating with demo system…</string>
-    <string name="demo_loading_subtitle">Establishing a secure encrypted channel</string>
-    <string name="demo_enter_button">Agree and Enter Demo</string>
-    <string name="demo_feature1_title">Full PRO Feature Experience</string>
-    <string name="demo_feature1_desc">This demo has all PRO commercial features enabled. Explore multi-floor automation, custom canvas widgets, security cockpit, real-time weather animations, and more.</string>
-    <string name="demo_feature2_title">Zero-Risk Sandbox</string>
-    <string name="demo_feature2_desc">This environment uses virtual simulation data. All controls and scene changes are safe and will not affect any real devices.</string>
-    <string name="demo_feature3_title">Read-Only Layout Protection</string>
-    <string name="demo_feature3_desc">To keep the public demo tidy, permanent layout changes and background asset uploads are not supported in this mode.</string>
-    <string name="demo_feature4_title">How to Exit Demo Mode</string>
-    <string name="demo_feature4_desc">Tip: Triple-tap anywhere with three fingers to open the admin settings menu, then choose \"Exit Demo Mode\".</string>
-    <string name="btn_quick_demo">Enter Demo Mode</string>
-    <string name="btn_exit_demo">Exit Demo Mode</string>
     <string name="btn_wipe_data">Wipe Data and Exit</string>
 
     <!-- Alert Notification Titles -->

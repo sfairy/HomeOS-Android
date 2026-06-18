@@ -162,6 +162,12 @@ class SocketService : Service() {
         // 保存新处理的通知 ID
         if (newlySeen.isNotEmpty()) {
             seenNotificationIds.addAll(newlySeen)
+            // 优化：限制集合大小，防止长期运行后内存泄漏
+            if (seenNotificationIds.size > MAX_SEEN_IDS) {
+                val excess = seenNotificationIds.size - MAX_SEEN_IDS
+                val iterator = seenNotificationIds.iterator()
+                repeat(excess) { if (iterator.hasNext()) iterator.next(); iterator.remove() }
+            }
             persistSeenNotificationIds()
             if (isInitialSeed) {
                 Log.i(TAG, "已初始化 ${newlySeen.size} 条现有通知，不触发提醒。")
@@ -228,5 +234,6 @@ class SocketService : Service() {
         private const val PREFS_NAME = "HomeOSPreferences"    // 偏好设置名称
         private const val KEY_SEEN_IDS = "seen_notification_ids"  // 已处理通知 ID 键名
         private const val POLL_INTERVAL_MS = 15_000L          // 轮询间隔（15秒）
+        private const val MAX_SEEN_IDS = 500                  // 最大已见通知 ID 数量，防止内存泄漏
     }
 }
