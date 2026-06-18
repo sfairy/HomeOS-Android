@@ -70,6 +70,12 @@ class MainActivity : AppCompatActivity() {
     private val FILECHOOSER_RESULTCODE = 10001
     private val NOTIFICATION_PERMISSION_REQUEST_CODE = 10010
 
+    // 管理员手势状态（须在 Activity 层检测，避免 WebView.setOnTouchListener 阻断滑动）
+    private var threeFingerTapCount = 0
+    private var lastThreeFingerTapTime = 0L
+    private var cornerClickCount = 0
+    private var lastCornerClickTime = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -502,7 +508,7 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
-            useWideViewPort = false
+            useWideViewPort = true
             loadWithOverviewMode = false
             textZoom = 100
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -514,6 +520,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.webView.setInitialScale(calculateAspectRatioScale())
+        binding.webView.isFocusable = true
+        binding.webView.isFocusableInTouchMode = true
 
         // 注入 NativeBridge
         binding.webView.addJavascriptInterface(NativeBridge(this), "Native")
@@ -562,6 +570,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isErrorState) {
                     binding.loadingOverlay.visibility = View.GONE
                     binding.webView.visibility = View.VISIBLE
+                    binding.webView.requestFocus()
                 }
             }
 
@@ -605,7 +614,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 向 WebView 注入固定宽度 viewport，使页面始终按设计画布宽度排版，
-     * 再由 loadWithOverviewMode 整体等比缩放到屏幕宽度（不变行、满屏）。
+     * 再由 setInitialScale 整体等比缩放到屏幕宽度（不变行、满屏）。
      */
     private fun injectFixedViewport() {
         val js = """
@@ -616,6 +625,12 @@ class MainActivity : AppCompatActivity() {
                 if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}
                 var c='width='+W+', user-scalable=no';
                 if(m.getAttribute('content')!==c){m.setAttribute('content',c);}
+                if(!document.getElementById('homeos-touch-fix')){
+                  var s=document.createElement('style');
+                  s.id='homeos-touch-fix';
+                  s.textContent='html,body{-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;}';
+                  document.head.appendChild(s);
+                }
               }
               apply();
               if(!window.__homeosVpObs){
@@ -763,78 +778,80 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 拦截手势操作。三指连击可触发系统管理员配置面板！
+     * 在 Activity 层检测管理员手势，避免在 WebView 上挂 OnTouchListener（会阻断页面滑动）。
+     * @return true 表示已消费事件（打开设置等）
      */
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupGestureInterceptors() {
-        var threeFingerTapCount = 0
-        var lastThreeFingerTapTime = 0L
-        var cornerClickCount = 0
-        var lastCornerClickTime = 0L
+    private fun handleAdminGesture(event: MotionEvent): Boolean {
+        val actionMasked = event.actionMasked
 
-        val sharedGestureListener = View.OnTouchListener { view, event ->
-            val actionMasked = event.actionMasked
-
-            // 1. 检测三指点击（任何指针数量为 3 的按下事件）
-            if ((actionMasked == MotionEvent.ACTION_POINTER_DOWN || actionMasked == MotionEvent.ACTION_DOWN) && event.pointerCount == 3) {
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastThreeFingerTapTime < 1000L) {
-                    if (currentTime - lastThreeFingerTapTime > 150L) {
-                        threeFingerTapCount++
-                        Log.d("MainActivity", "三指点击已识别。次数：$threeFingerTapCount")
-                    }
-                } else {
-                    threeFingerTapCount = 1
-                    Log.d("MainActivity", "三指点击已识别。已重置计数为 1")
+        // 1. 检测三指点击（任何指针数量为 3 的按下事件）
+        if ((actionMasked == MotionEvent.ACTION_POINTER_DOWN || actionMasked == MotionEvent.ACTION_DOWN) && event.pointerCount == 3) {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastThreeFingerTapTime < 1000L) {
+                if (currentTime - lastThreeFingerTapTime > 150L) {
+                    threeFingerTapCount++
+                    Log.d("MainActivity", "三指点击已识别。次数：$threeFingerTapCount")
                 }
-                lastThreeFingerTapTime = currentTime
-
-                if (threeFingerTapCount >= 3) {
-                    Log.i("MainActivity", "检测到三指连击！正在打开设置。")
-                    threeFingerTapCount = 0
-                    toggleSettingsOverlay(true)
-                    return@OnTouchListener true // 拦截！
-                }
+            } else {
+                threeFingerTapCount = 1
+                Log.d("MainActivity", "三指点击已识别。已重置计数为 1")
             }
+            lastThreeFingerTapTime = currentTime
 
-            // 2. 备用方案：右上角五连击（150x150 热点区域，便于壁挂式平板操作）
-            if (actionMasked == MotionEvent.ACTION_DOWN) {
-                val x = event.x
-                val y = event.y
-                val screenWidth = resources.displayMetrics.widthPixels
-
-                if (x >= screenWidth - 150 && y <= 150) {
-                    val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastCornerClickTime < 1500L) {
-                        cornerClickCount++
-                        Log.d("MainActivity", "角落点击已识别。次数：$cornerClickCount")
-                    } else {
-                        cornerClickCount = 1
-                        Log.d("MainActivity", "角落点击已识别。已重置计数为 1")
-                    }
-                    lastCornerClickTime = currentTime
-
-                    if (cornerClickCount >= 5) {
-                        Log.i("MainActivity", "检测到右上角五连击！正在打开设置。")
-                        cornerClickCount = 0
-                        toggleSettingsOverlay(true)
-                        return@OnTouchListener true // 拦截！
-                    }
-                }
+            if (threeFingerTapCount >= 3) {
+                Log.i("MainActivity", "检测到三指连击！正在打开设置。")
+                threeFingerTapCount = 0
+                toggleSettingsOverlay(true)
+                return true
             }
-
-            // 消费 loadingOverlay 上的触摸事件以防止点击泄漏，
-            // 同时对 webView 返回 false 以确保页面滚动/点击事件被处理。
-            view.id == binding.loadingOverlay.id
         }
 
-        // 配置 loading overlay 属性使其可聚焦/可点击
+        // 2. 备用方案：右上角五连击（150x150 热点区域，便于壁挂式平板操作）
+        if (actionMasked == MotionEvent.ACTION_DOWN) {
+            val x = event.rawX
+            val y = event.rawY
+            val screenWidth = resources.displayMetrics.widthPixels
+
+            if (x >= screenWidth - 150 && y <= 150) {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastCornerClickTime < 1500L) {
+                    cornerClickCount++
+                    Log.d("MainActivity", "角落点击已识别。次数：$cornerClickCount")
+                } else {
+                    cornerClickCount = 1
+                    Log.d("MainActivity", "角落点击已识别。已重置计数为 1")
+                }
+                lastCornerClickTime = currentTime
+
+                if (cornerClickCount >= 5) {
+                    Log.i("MainActivity", "检测到右上角五连击！正在打开设置。")
+                    cornerClickCount = 0
+                    toggleSettingsOverlay(true)
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (handleAdminGesture(ev)) {
+            return true
+        }
+        // 加载遮罩显示时吞掉触摸，防止穿透到下层 WebView
+        if (binding.loadingOverlay.visibility == View.VISIBLE) {
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * 配置加载遮罩，管理员手势改由 dispatchTouchEvent 统一处理。
+     */
+    private fun setupGestureInterceptors() {
         binding.loadingOverlay.isClickable = true
         binding.loadingOverlay.isFocusable = true
-
-        // 将共享手势监听器应用到两个活动视图
-        binding.webView.setOnTouchListener(sharedGestureListener)
-        binding.loadingOverlay.setOnTouchListener(sharedGestureListener)
     }
 
     /**
@@ -1736,6 +1753,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        binding.webView.setInitialScale(calculateAspectRatioScale())
         binding.webView.postDelayed({
             injectFixedViewport()
         }, 100)
