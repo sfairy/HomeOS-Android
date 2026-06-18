@@ -197,24 +197,23 @@ object HomeOSAuth {
     private fun extractCookiesFromConnection(connection: HttpURLConnection): Pair<String, String> {
         var authToken = ""
         var csrfToken = ""
-        var index = 0
-        
-        // 遍历所有响应头
-        while (true) {
-            val key = connection.getHeaderFieldKey(index) ?: break
-            val value = connection.getHeaderField(index) ?: ""
-            
-            // 查找 Set-Cookie 头
-            if (key.equals("Set-Cookie", ignoreCase = true)) {
-                when {
-                    value.startsWith("auth_token=") ->
-                        authToken = parseCookieValue(value)
-                    value.startsWith("csrf_token=") ->
-                        csrfToken = parseCookieValue(value)
-                }
+
+        // HttpURLConnection 的 header index=0 是状态行，key 为 null。
+        // 直接使用 headerFields 更可靠（同名 header 可能出现多次）。
+        val headerFields = connection.headerFields ?: emptyMap()
+        val setCookieValues = headerFields.entries
+            .firstOrNull { (k, _) -> k != null && k.equals("Set-Cookie", ignoreCase = true) }
+            ?.value
+            ?.filterNotNull()
+            ?: emptyList()
+
+        for (value in setCookieValues) {
+            when {
+                value.startsWith("auth_token=") -> authToken = parseCookieValue(value)
+                value.startsWith("csrf_token=") -> csrfToken = parseCookieValue(value)
             }
-            index++
         }
+
         return authToken to csrfToken
     }
 
