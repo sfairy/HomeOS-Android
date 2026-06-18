@@ -20,6 +20,11 @@ class NetworkRoamingManager(private val context: Context) {
 
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    
+    // 缓存上次成功的网络类型，避免重复测试
+    private var lastUsedLocal = false
+    private var lastCheckTime = 0L
+    private val cacheValidDuration = 30_000L // 30秒缓存有效期
 
     interface RoamingCallback {
         fun onRouteResolved(resolvedUrl: String, isLocal: Boolean)
@@ -27,6 +32,7 @@ class NetworkRoamingManager(private val context: Context) {
 
     /**
      * 探测本地网络地址以解析最佳 Web 根路径。
+     * 优先使用局域网，如果缓存有效且上次是局域网，则直接使用。
      */
     fun resolveOptimalRoute(lanUrl: String, wanUrl: String, callback: RoamingCallback) {
         if (!isNetworkConnected()) {
@@ -40,15 +46,27 @@ class NetworkRoamingManager(private val context: Context) {
             return
         }
 
+        // 优化：如果缓存有效且上次使用局域网，直接使用局域网（减少延迟）
+        val now = System.currentTimeMillis()
+        if (lastUsedLocal && (now - lastCheckTime) < cacheValidDuration) {
+            Log.d("Roaming", "使用缓存的局域网路径: $lanUrl")
+            callback.onRouteResolved(lanUrl, true)
+            return
+        }
+
         Log.d("Roaming", "正在解析网络路径...")
         executor.execute {
-            val isLanAvailable = testConnection(lanUrl, timeoutMs = 1500)
+            // 优化：减少超时时间到 500ms，更快做出决策
+            val isLanAvailable = testConnection(lanUrl, timeoutMs = 500)
             mainHandler.post {
+                lastCheckTime = System.currentTimeMillis()
                 if (isLanAvailable) {
                     Log.d("Roaming", "已解析到局域网: $lanUrl")
+                    lastUsedLocal = true
                     callback.onRouteResolved(lanUrl, true)
                 } else {
                     Log.d("Roaming", "局域网连接超时或不可达。路由到公网: $wanUrl")
+                    lastUsedLocal = false
                     callback.onRouteResolved(wanUrl, false)
                 }
             }
