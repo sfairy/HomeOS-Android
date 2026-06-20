@@ -49,9 +49,9 @@ class BootReceiver : BroadcastReceiver() {
 
             // 创建服务启动意图
             val serviceIntent = Intent(context, SocketService::class.java).apply {
-                putExtra("SERVER_URL", lanUrl)
-                putExtra("AUTH_TOKEN", authToken)
-                putExtra("CSRF_TOKEN", csrfToken)
+                putExtra(SocketService.EXTRA_SERVER_URL, lanUrl)
+                putExtra(SocketService.EXTRA_AUTH_TOKEN, authToken)
+                putExtra(SocketService.EXTRA_CSRF_TOKEN, csrfToken)
             }
 
             // 启动服务（根据 Android 版本选择不同方式）
