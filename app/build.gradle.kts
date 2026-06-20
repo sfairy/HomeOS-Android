@@ -100,15 +100,17 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
 
-tasks.named("assembleRelease") {
-    doFirst {
-        val keystoreFile = file(signingProp("storeFile", "KEYSTORE_FILE", "homeos-release-key.jks"))
-        if (!keystoreFile.exists()) {
-            throw GradleException(
-                "Release 正式签名需要 keystore 文件：${keystoreFile.path}\n" +
-                    "本地：将 homeos-release-key.jks 放到 app/ 目录\n" +
-                    "CI：在 GitHub Secrets 配置 KEYSTORE_BASE64"
-            )
+afterEvaluate {
+    tasks.named("assembleRelease") {
+        doFirst {
+            val keystoreFile = file(signingProp("storeFile", "KEYSTORE_FILE", "homeos-release-key.jks"))
+            if (!keystoreFile.exists()) {
+                throw GradleException(
+                    "Release 正式签名需要 keystore 文件：${keystoreFile.path}\n" +
+                        "本地：将 homeos-release-key.jks 放到 app/ 目录\n" +
+                        "CI：在 GitHub Secrets 配置 KEYSTORE_BASE64"
+                )
+            }
         }
     }
 }
