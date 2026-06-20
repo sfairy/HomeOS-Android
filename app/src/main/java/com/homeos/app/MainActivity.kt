@@ -253,22 +253,22 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     }
 
     private fun setupOfflineOverlayListeners() {
-        binding.offlineOverlay.findViewById<View>(R.id.btnConfigOffline)?.setOnClickListener {
+        binding.offlineOverlay.btnConfigOffline.setOnClickListener {
             hideOfflineOverlay()
             toggleSettingsOverlay(true)
         }
-        binding.offlineOverlay.findViewById<View>(R.id.btnRetryOffline)?.setOnClickListener {
+        binding.offlineOverlay.btnRetryOffline.setOnClickListener {
             networkCoordinator.retryNow()
         }
     }
 
     private fun showOfflineOverlay() {
-        binding.offlineOverlay.visibility = View.VISIBLE
+        binding.offlineOverlay.root.visibility = View.VISIBLE
         binding.loadingOverlay.visibility = View.GONE
     }
 
     private fun hideOfflineOverlay() {
-        binding.offlineOverlay.visibility = View.GONE
+        binding.offlineOverlay.root.visibility = View.GONE
     }
 
     private fun notifySocketService(

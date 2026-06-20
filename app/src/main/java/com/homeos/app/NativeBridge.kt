@@ -109,7 +109,7 @@ class NativeBridge(
 
     @JavascriptInterface
     fun acknowledgeAlert(alertId: String) {
-        hostRef.get()?.getNotificationOrchestrator()?.cancelNotification(alertId)
+        hostRef.get()?.getNotificationOrchestrator().cancelNotification(alertId)
     }
 
     private fun sha256(base: String): String {
