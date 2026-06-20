@@ -47,6 +47,7 @@ captures/
 *.jks
 *.keystore
 *.jks.bck
+keystore.properties
 
 # lint
 lint-report.html

@@ -1,5 +1,7 @@
+import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Properties
 import java.util.TimeZone
 
 plugins {
@@ -7,6 +9,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.gms.google-services")
 }
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+fun signingProp(propertyKey: String, envKey: String, default: String): String =
+    System.getenv(envKey)?.takeIf { it.isNotBlank() }
+        ?: keystoreProperties.getProperty(propertyKey, default)
 
 // 根据当前北京时间自动生成版本号
 val buildTime = SimpleDateFormat("yyyyMMddHH").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(Date())
@@ -28,13 +40,13 @@ android {
     }
 
     signingConfigs {
-        val keystoreFile = file("homeos-release-key.jks")
+        val keystoreFile = file(signingProp("storeFile", "KEYSTORE_FILE", "homeos-release-key.jks"))
         if (keystoreFile.exists()) {
             create("release") {
                 storeFile = keystoreFile
-                storePassword = "homeos123"
-                keyAlias = "homeos"
-                keyPassword = "homeos123"
+                storePassword = signingProp("storePassword", "KEYSTORE_PASSWORD", "homeos123")
+                keyAlias = signingProp("keyAlias", "KEY_ALIAS", "homeos")
+                keyPassword = signingProp("keyPassword", "KEY_PASSWORD", "homeos123")
             }
         }
     }
@@ -42,7 +54,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (file("homeos-release-key.jks").exists()) {
+            val keystoreFile = file(signingProp("storeFile", "KEYSTORE_FILE", "homeos-release-key.jks"))
+            if (keystoreFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(
@@ -79,15 +92,23 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.webkit:webkit:1.10.0")
 
-    // OkHttp & Gson removed — network uses HttpURLConnection; no JSON library needed
-
-    // Google FCM
     implementation("com.google.firebase:firebase-messaging-ktx:23.4.1")
-
-    // Huawei HMS Push fallbacks
     implementation("com.huawei.hms:push:6.12.0.300")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+}
+
+tasks.named("assembleRelease") {
+    doFirst {
+        val keystoreFile = file(signingProp("storeFile", "KEYSTORE_FILE", "homeos-release-key.jks"))
+        if (!keystoreFile.exists()) {
+            throw GradleException(
+                "Release 正式签名需要 keystore 文件：${keystoreFile.path}\n" +
+                    "本地：将 homeos-release-key.jks 放到 app/ 目录\n" +
+                    "CI：在 GitHub Secrets 配置 KEYSTORE_BASE64"
+            )
+        }
+    }
 }
