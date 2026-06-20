@@ -33,7 +33,10 @@ jobs:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       run: |
         if [ -n "$KEYSTORE_BASE64" ]; then
-          printf "%s" "$KEYSTORE_BASE64" | base64 -w 0 -d > app/homeos-release-key.jks
+          echo "$KEYSTORE_BASE64" | base64 --decode > app/homeos-release-key.jks
+          echo "Release keystore configured."
+        else
+          echo "::warning::KEYSTORE_BASE64 secret 未配置，Release 将构建为未签名 APK。"
         fi
     
     - name: Build with Gradle

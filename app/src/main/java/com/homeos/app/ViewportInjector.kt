@@ -20,7 +20,6 @@ object ViewportInjector {
      * 首次注入：固定 viewport 宽度、触摸滚动优化、CSS transform 等比缩放。
      */
     fun buildInstallScript(designWidth: Int, designHeight: Int, screenWidth: Int): String {
-        val scale = screenWidth.toDouble() / designWidth.toDouble()
         return """
             (function(){
               if (window.__homeosViewportInjected) return;

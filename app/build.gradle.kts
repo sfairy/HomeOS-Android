@@ -28,18 +28,23 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("homeos-release-key.jks")
-            storePassword = "homeos123"
-            keyAlias = "homeos"
-            keyPassword = "homeos123"
+        val keystoreFile = file("homeos-release-key.jks")
+        if (keystoreFile.exists()) {
+            create("release") {
+                storeFile = keystoreFile
+                storePassword = "homeos123"
+                keyAlias = "homeos"
+                keyPassword = "homeos123"
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            if (file("homeos-release-key.jks").exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
