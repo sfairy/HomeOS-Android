@@ -28,17 +28,12 @@ class WebViewController(
 ) {
     private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
     private var nativeBridge: NativeBridge? = null
-    private var designWidth = DEFAULT_DESIGN_WIDTH
-    private var designHeight = DEFAULT_DESIGN_HEIGHT
     private var isDestroying = false
 
     val webView: WebView get() = binding.webView
 
     @SuppressLint("SetJavaScriptEnabled")
-    fun setup(designWidth: Int, designHeight: Int) {
-        this.designWidth = designWidth
-        this.designHeight = designHeight
-
+    fun setup() {
         binding.webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -49,8 +44,11 @@ class WebViewController(
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = HomeOSAuth.APP_USER_AGENT
             mediaPlaybackRequiresUserGesture = false
-            // useWideViewPort + loadWithOverviewMode 由渲染引擎按设备宽度等比缩放视口，
-            // 任意分辨率都能铺满，无需再用 CSS transform 二次缩放（更省 GPU、文字更清晰）。
+            // 关键性能修复：尊重页面自带的 width=device-width 视口。
+            // 前端（ScaledViewport/useScaling）已基于 1366 设计基准做整页等比缩放，
+            // 这里再强制 width=物理分辨率 会让 devicePixelRatio≈1、按 ~6.8M CSS 像素布局，
+            // 撑爆 WebView 瓦片显存（鸿蒙 ArkWeb 尤甚）→ 渲染进程 OOM/反复重建 → 严重卡顿。
+            // useWideViewPort=true 使页面 device-width 视口生效，dpr 回归真实密度（清晰且省显存）。
             useWideViewPort = true
             loadWithOverviewMode = true
             textZoom = 100
@@ -62,7 +60,7 @@ class WebViewController(
             displayZoomControls = false
         }
 
-        // setInitialScale(0)：交给 overview 模式按设备宽度自动计算初始缩放。
+        // setInitialScale(0)：按页面 device-width 视口自动计算初始缩放。
         binding.webView.setInitialScale(0)
         binding.webView.isFocusable = true
         binding.webView.isFocusableInTouchMode = true
@@ -99,14 +97,8 @@ class WebViewController(
         }
 
         binding.webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                resetViewportInjection()
-            }
-
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                injectViewport()
                 onPageReady()
             }
 
@@ -168,27 +160,6 @@ class WebViewController(
         }
     }
 
-    fun updateDesignDimensions(designWidth: Int, designHeight: Int) {
-        this.designWidth = designWidth
-        this.designHeight = designHeight
-        injectViewport()
-    }
-
-    fun onConfigurationChanged() {
-        binding.webView.postDelayed({ injectViewport() }, 100)
-    }
-
-    private fun resetViewportInjection() {
-        binding.webView.evaluateJavascript(ViewportInjector.buildResetScript(), null)
-    }
-
-    private fun injectViewport() {
-        binding.webView.evaluateJavascript(
-            ViewportInjector.buildInstallScript(designWidth),
-            null
-        )
-    }
-
     fun pause() {
         binding.webView.onPause()
         binding.webView.pauseTimers()
@@ -220,10 +191,5 @@ class WebViewController(
             uploadMessage?.onReceiveValue(null)
         }
         uploadMessage = null
-    }
-
-    companion object {
-        private const val DEFAULT_DESIGN_WIDTH = 3200
-        private const val DEFAULT_DESIGN_HEIGHT = 2136
     }
 }

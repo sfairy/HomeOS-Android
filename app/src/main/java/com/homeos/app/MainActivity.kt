@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             urlRedirectHandler = { handleUrlRedirection(it) },
             fileChooserLauncher = { intent -> fileChooserResultLauncher.launch(intent) }
         )
-        webViewController.setup(designWidth, designHeight)
+        webViewController.setup()
 
         networkCoordinator = NetworkCoordinator(
             binding = binding,
@@ -268,12 +268,10 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         networkCoordinator.resetLoginSession(payload.authToken.isNotEmpty())
         startServices()
 
+        // 设计画布仅影响 getDeviceInfo 上报，不再强制覆盖页面视口；变更时重载页面即可刷新上报值。
         val designChanged = designWidth != previousDesignWidth || designHeight != previousDesignHeight
         val tokenChanged = payload.authToken.isNotEmpty() &&
             (payload.authToken != previousAuthToken || payload.csrfToken != previousCsrfToken)
-        if (designChanged) {
-            webViewController.updateDesignDimensions(designWidth, designHeight)
-        }
 
         if (payload.lang != previousLang) {
             binding.loadingText.text = getString(R.string.connecting)
@@ -531,9 +529,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (::webViewController.isInitialized) {
-            webViewController.onConfigurationChanged()
-        }
+        // 页面自带 device-width 视口，旋转/尺寸变化由前端 useScaling 自适应，原生无需再注入。
     }
 
     override fun onNewIntent(intent: Intent) {
