@@ -50,7 +50,12 @@ object HomeOSAuth {
                 .post(jsonParam.toString().toRequestBody(JSON_MEDIA_TYPE))
                 .build()
 
-            val client = HttpClientProvider.withTimeouts(connectMs = 5000, readMs = 5000)
+            val client = HttpClientProvider.withTimeouts(
+                connectMs = 5000,
+                readMs = 5000,
+                // 内网 HTTPS 多为自签名证书，对私有地址放行自签名校验，公网仍严格校验。
+                trustSelfSigned = HttpClientProvider.isPrivateHost(cleanUrl)
+            )
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string() ?: ""
 

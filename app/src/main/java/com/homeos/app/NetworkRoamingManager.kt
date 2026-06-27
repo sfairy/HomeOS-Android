@@ -131,7 +131,9 @@ class NetworkRoamingManager(context: Context) {
             val client = HttpClientProvider.withTimeouts(
                 connectMs = timeoutMs.toLong(),
                 readMs = timeoutMs.toLong(),
-                callMs = (timeoutMs * 2).toLong()
+                callMs = (timeoutMs * 2).toLong(),
+                // 内网 HTTPS 自签名证书探测时若不放行会被判为不可达，从而误回退到公网。
+                trustSelfSigned = HttpClientProvider.isPrivateHost(urlString)
             )
             client.newCall(request).execute().use { response ->
                 response.code in 200..399

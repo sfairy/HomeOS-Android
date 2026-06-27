@@ -121,6 +121,22 @@ class WebViewController(
                 }
             }
 
+            override fun onReceivedSslError(
+                view: WebView?,
+                handler: android.webkit.SslErrorHandler?,
+                error: android.net.http.SslError?
+            ) {
+                // 内网 HTTPS 多为自签名证书；仅对私有地址放行，公网证书错误仍按默认拦截。
+                val host = error?.url?.let {
+                    runCatching { Uri.parse(it).host }.getOrNull()
+                }
+                if (host != null && HttpClientProvider.isPrivateHostName(host)) {
+                    handler?.proceed()
+                } else {
+                    handler?.cancel()
+                }
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
                 return urlRedirectHandler(url)
