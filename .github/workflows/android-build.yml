@@ -18,6 +18,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      BUILD_TYPE: ${{ inputs.build_type || 'release' }}
     
     steps:
     - uses: actions/checkout@v4
@@ -32,7 +34,7 @@ jobs:
       run: chmod +x gradlew
     
     - name: Create keystore file from base64
-      if: inputs.build_type == 'release'
+      if: env.BUILD_TYPE == 'release'
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       run: |
@@ -53,18 +55,18 @@ jobs:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      run: ./gradlew assemble${{ inputs.build_type == 'release' && 'Release' || 'Debug' }}
+      run: ./gradlew assemble${{ env.BUILD_TYPE == 'release' && 'Release' || 'Debug' }}
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: HomeOSAPP
-        path: app/build/outputs/apk/${{ inputs.build_type }}/*.apk
+        path: app/build/outputs/apk/${{ env.BUILD_TYPE }}/*.apk
 
     - name: Upload R8 mapping
-      if: inputs.build_type == 'release'
+      if: env.BUILD_TYPE == 'release'
       uses: actions/upload-artifact@v4
       with:
         name: HomeOSAPP-mapping
         path: app/build/outputs/mapping/release/mapping.txt
-        if-no-files-found: warn
+        if-no-file-found: warn
