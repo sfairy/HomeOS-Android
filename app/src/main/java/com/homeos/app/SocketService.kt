@@ -234,9 +234,11 @@ class SocketService : Service() {
         private const val PREFS_NAME = "HomeOSPreferences"
         private const val KEY_SEEN_IDS = "seen_notification_ids"
         // 前台时网页自身已实时取数，原生轮询放慢以避免重复请求与耗电；
-        // 后台时网页暂停，由推送(FCM/HMS)为主、轮询为兜底，间隔适度放宽以省电。
-        private const val POLL_INTERVAL_BACKGROUND_MS = 30_000L
+        // 后台时网页暂停，由推送(FCM/HMS)为主、轮询仅作兜底，间隔大幅放宽以省电。
+        // 注意：后台间隔必须明显大于前台间隔。此前两者被设反（后台 30s 比前台 60s 更频繁），
+        // 导致熄屏/后台时每 30s 从空闲态唤醒一次网络射频，是耗电异常的主因。
         private const val POLL_INTERVAL_FOREGROUND_MS = 60_000L
+        private const val POLL_INTERVAL_BACKGROUND_MS = 300_000L
         private const val PERSIST_DEBOUNCE_MS = 30_000L
         private const val MAX_SEEN_IDS = 500
 
