@@ -8,10 +8,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import okhttp3.Request
 import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -119,27 +117,21 @@ class SocketService : Service() {
         isPolling = true
         executor.execute {
             try {
-                val url = URL("$serverUrl/api/v1/notifications?limit=20")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 8000
-                connection.readTimeout = 8000
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-                connection.setRequestProperty(
-                    "Cookie",
-                    HomeOSAuth.buildCookieHeader(authToken, csrfToken)
-                )
-
-                val responseCode = connection.responseCode
-                if (responseCode !in 200..299) {
-                    Log.w(TAG, "通知轮询失败：HTTP $responseCode")
-                    connection.disconnect()
-                    return@execute
+                val request = Request.Builder()
+                    .url("$serverUrl/api/v1/notifications?limit=20")
+                    .get()
+                    .header("User-Agent", HomeOSAuth.APP_USER_AGENT)
+                    .header("Cookie", HomeOSAuth.buildCookieHeader(authToken, csrfToken))
+                    .build()
+                val client = HttpClientProvider.withTimeouts(connectMs = 8000, readMs = 8000)
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "通知轮询失败：HTTP ${response.code}")
+                        return@use
+                    }
+                    val body = response.body?.string() ?: ""
+                    handleNotificationPayload(body)
                 }
-
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                connection.disconnect()
-                handleNotificationPayload(body)
             } catch (e: Exception) {
                 Log.w(TAG, "通知轮询错误：${e.message}")
             } finally {
@@ -241,8 +233,10 @@ class SocketService : Service() {
         private const val TAG = "SocketService"
         private const val PREFS_NAME = "HomeOSPreferences"
         private const val KEY_SEEN_IDS = "seen_notification_ids"
-        private const val POLL_INTERVAL_BACKGROUND_MS = 15_000L
-        private const val POLL_INTERVAL_FOREGROUND_MS = 30_000L
+        // 前台时网页自身已实时取数，原生轮询放慢以避免重复请求与耗电；
+        // 后台时网页暂停，由推送(FCM/HMS)为主、轮询为兜底，间隔适度放宽以省电。
+        private const val POLL_INTERVAL_BACKGROUND_MS = 30_000L
+        private const val POLL_INTERVAL_FOREGROUND_MS = 60_000L
         private const val PERSIST_DEBOUNCE_MS = 30_000L
         private const val MAX_SEEN_IDS = 500
 

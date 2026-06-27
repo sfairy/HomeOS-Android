@@ -32,6 +32,22 @@ class NotificationOrchestrator(private val context: Context) {
         const val CHANNEL_SERVICE = "homeos_channel_service"
         
         const val NOTIFICATION_SERVICE_ID = 9999
+
+        // 进程级告警去重：FCM/HMS 推送与后台轮询可能针对同一条告警重复触发，
+        // 这里在窗口期内丢弃重复 id，避免同一告警重复发声/震动/唤醒屏幕。
+        private const val DEDUP_WINDOW_MS = 60_000L
+        private val recentAlertTimestamps = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+        private fun isDuplicateAlert(id: String): Boolean {
+            val now = System.currentTimeMillis()
+            val last = recentAlertTimestamps[id]
+            if (last != null && now - last < DEDUP_WINDOW_MS) return true
+            recentAlertTimestamps[id] = now
+            if (recentAlertTimestamps.size > 256) {
+                recentAlertTimestamps.entries.removeAll { now - it.value > DEDUP_WINDOW_MS }
+            }
+            return false
+        }
     }
 
     init {
@@ -115,6 +131,12 @@ class NotificationOrchestrator(private val context: Context) {
         cameraEntityId: String? = null
     ) {
         Log.i("Orchestrator", "收到通知请求: $title [$severity]")
+
+        // 0. 去重：窗口期内同一告警 id 已处理过则直接跳过。
+        if (isDuplicateAlert(id)) {
+            Log.d("Orchestrator", "丢弃重复告警: id=$id")
+            return
+        }
 
         // 1. 如果是严重警报且屏幕关闭，请求 WakeLock 立即打开屏幕
         if (severity.equals("CRITICAL", ignoreCase = true)) {

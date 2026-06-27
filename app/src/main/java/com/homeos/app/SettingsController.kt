@@ -31,15 +31,15 @@ class SettingsController(
         designWidth: Int,
         designHeight: Int,
         isKioskMode: Boolean,
-        lang: String
+        lang: String,
+        savedUser: String,
+        savedPass: String
     ) {
         binding.inputLanUrl.setText(lanUrl)
         binding.inputWanUrl.setText(wanUrl)
         binding.inputDesignWidth.setText(designWidth.toString())
         binding.inputDesignHeight.setText(designHeight.toString())
 
-        val savedUser = sharedPreferences.getString("auth_user", "") ?: ""
-        val savedPass = sharedPreferences.getString("auth_pass", "") ?: ""
         binding.inputUsername.setText(savedUser)
         binding.inputPassword.setText(savedPass)
 

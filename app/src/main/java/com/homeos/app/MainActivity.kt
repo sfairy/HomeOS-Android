@@ -16,8 +16,12 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.homeos.app.databinding.ActivityMainBinding
 import org.json.JSONObject
 import java.io.File
@@ -33,8 +37,37 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     companion object {
         private const val DEFAULT_DESIGN_WIDTH = 3200
         private const val DEFAULT_DESIGN_HEIGHT = 2136
-        private const val FILECHOOSER_RESULTCODE = 10001
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 10010
+
+        // 渲染进程崩溃自愈的循环保护（进程级，跨 recreate 存活）。
+        private const val RENDER_CRASH_WINDOW_MS = 60_000L
+        private const val RENDER_CRASH_MAX = 3
+        private const val RENDER_CRASH_BACKOFF_MS = 30_000L
+        private var renderCrashWindowStart = 0L
+        private var renderCrashCount = 0
+    }
+
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // 文件选择器结果回调（替代已废弃的 startActivityForResult/onActivityResult）。
+    private val fileChooserResultLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (::webViewController.isInitialized) {
+                webViewController.handleFileChooserResult(result.resultCode, result.data)
+            }
+        }
+
+    // 返回键处理（替代已废弃的 onBackPressed 重写）。
+    private val backPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            when {
+                binding.settingsOverlay.visibility == View.VISIBLE -> toggleSettingsOverlay(false)
+                ::webViewController.isInitialized && webViewController.webView.canGoBack() ->
+                    webViewController.webView.goBack()
+                !isKioskMode -> finish()
+                else -> { /* Kiosk 模式：拦截返回键，禁止退出 */ }
+            }
+        }
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -72,6 +105,8 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        onBackPressedDispatcher.addCallback(this, backPressedCallback)
+
         val privacyAccepted = sharedPreferences.getBoolean("privacy_accepted", false)
         if (!privacyAccepted) {
             Log.i("MainActivity", "隐私政策尚未接受。显示弹窗拦截器。")
@@ -97,16 +132,15 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             onDownload = { url, mime, disposition -> shareOrSaveDownloadedFile(url, mime, disposition) },
             onMainFrameError = { if (::networkCoordinator.isInitialized) networkCoordinator.handlePageLoadFailure() },
             onPageReady = { if (::networkCoordinator.isInitialized) networkCoordinator.onPageReady() },
+            onRenderProcessGone = { handleRenderProcessGone() },
             urlRedirectHandler = { handleUrlRedirection(it) },
-            fileChooserLauncher = { intent, code -> startActivityForResult(intent, code) },
-            fileChooserRequestCode = FILECHOOSER_RESULTCODE
+            fileChooserLauncher = { intent -> fileChooserResultLauncher.launch(intent) }
         )
         webViewController.setup(designWidth, designHeight)
 
         networkCoordinator = NetworkCoordinator(
             binding = binding,
             roamingManager = roamingManager,
-            sharedPreferences = sharedPreferences,
             executor = executor,
             webViewController = webViewController,
             isAlive = { !isFinishing && !isDestroyed },
@@ -134,11 +168,15 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             getLocalizedResources = { ctx, code -> getLocalizedResources(ctx, code) }
         )
 
-        settingsController.loadIntoForm(lanUrl, wanUrl, designWidth, designHeight, isKioskMode, tempSelectedLang())
+        settingsController.loadIntoForm(
+            lanUrl, wanUrl, designWidth, designHeight, isKioskMode, tempSelectedLang(),
+            HomeOSAuth.loadUsername(this), HomeOSAuth.loadPassword(this)
+        )
         settingsController.setupListeners()
 
         setupGestureInterceptors()
         setupOfflineOverlayListeners()
+        setupImeInsetHandling()
 
         startServices()
         requestNotificationPermissionIfNeeded()
@@ -170,17 +208,35 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     private fun loadSavedConfigValues() {
         lanUrl = sharedPreferences.getString("server_lan_url", "") ?: ""
         wanUrl = sharedPreferences.getString("server_wan_url", "") ?: ""
-        designWidth = sharedPreferences.getInt("design_width", DEFAULT_DESIGN_WIDTH)
-        designHeight = sharedPreferences.getInt("design_height", DEFAULT_DESIGN_HEIGHT)
+        // 默认设计画布跟随设备真实分辨率，使任意设备都能等比铺满全屏，
+        // 而非固定为小米 Pad 8 的 3200x2136。用户仍可在高级设置中手动覆盖。
+        val (realWidth, realHeight) = realScreenSize()
+        designWidth = sharedPreferences.getInt("design_width", realWidth)
+        designHeight = sharedPreferences.getInt("design_height", realHeight)
         isKioskMode = sharedPreferences.getBoolean("is_kiosk_mode", true)
+    }
+
+    /**
+     * 获取设备的真实屏幕分辨率（包含被沉浸式隐藏的状态栏/导航栏区域）。
+     */
+    private fun realScreenSize(): Pair<Int, Int> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            bounds.width() to bounds.height()
+        } else {
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            metrics.widthPixels to metrics.heightPixels
+        }
     }
 
     private fun saveConfig(payload: SettingsSavePayload) {
         val previousDesignWidth = designWidth
         val previousDesignHeight = designHeight
         val previousLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
-        val previousAuthToken = HomeOSAuth.loadAuthToken(sharedPreferences)
-        val previousCsrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
+        val previousAuthToken = HomeOSAuth.loadAuthToken(this)
+        val previousCsrfToken = HomeOSAuth.loadCsrfToken(this)
         val urlChanged = payload.lan != lanUrl || payload.wan != wanUrl
 
         lanUrl = payload.lan
@@ -194,19 +250,22 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             putString("server_wan_url", wanUrl)
             putInt("design_width", designWidth)
             putInt("design_height", designHeight)
-            putString("auth_user", payload.user)
-            putString("auth_pass", payload.pass)
-            putString(HomeOSAuth.KEY_AUTH_TOKEN, payload.authToken)
-            putString(HomeOSAuth.KEY_CSRF_TOKEN, payload.csrfToken)
             putBoolean("is_kiosk_mode", isKioskMode)
             putString("app_language", payload.lang)
             putBoolean("is_configured", true)
             apply()
         }
 
+        // 敏感凭据写入加密存储。
+        HomeOSAuth.saveCredentials(this, payload.user, payload.pass)
+        HomeOSAuth.saveTokens(this, payload.authToken, payload.csrfToken)
+
         setAppLocale(this, payload.lang)
         settingsController.applyLanguageToSettingsUI(payload.lang)
         updateScreenLocking()
+        // 配置已变更（令牌按服务器绑定）：设置页已成功登录则沿用其新令牌，
+        // 否则允许加载时用账号密码再静默登录一次。
+        networkCoordinator.resetLoginSession(payload.authToken.isNotEmpty())
         startServices()
 
         val designChanged = designWidth != previousDesignWidth || designHeight != previousDesignHeight
@@ -244,7 +303,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             putBoolean("is_configured", false)
             apply()
         }
-        HomeOSAuth.clearAuthTokens(sharedPreferences)
+        HomeOSAuth.clearAuthTokens(this)
         stopService(Intent(this, SocketService::class.java))
         clearAppCacheAndWebView(this)
         if (!isFinishing && !isDestroyed) {
@@ -265,6 +324,37 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     private fun showOfflineOverlay() {
         binding.offlineOverlay.root.visibility = View.VISIBLE
         binding.loadingOverlay.visibility = View.GONE
+    }
+
+    /**
+     * WebView 渲染进程崩溃后的自愈：限频重建，避免页面持续 OOM 导致紧密重建死循环。
+     * 窗口期内重建次数超限时先展示离线页，退避一段时间后再尝试重建。
+     */
+    private fun handleRenderProcessGone() {
+        if (isFinishing || isDestroyed) return
+
+        val now = System.currentTimeMillis()
+        if (now - renderCrashWindowStart > RENDER_CRASH_WINDOW_MS) {
+            renderCrashWindowStart = now
+            renderCrashCount = 0
+        }
+        renderCrashCount++
+
+        if (renderCrashCount <= RENDER_CRASH_MAX) {
+            Log.w("MainActivity", "渲染进程崩溃，第 $renderCrashCount 次重建。")
+            recreate()
+        } else {
+            Log.e("MainActivity", "渲染进程在窗口期内频繁崩溃，暂停重建并展示离线页，${RENDER_CRASH_BACKOFF_MS}ms 后重试。")
+            showOfflineOverlay()
+            mainHandler.removeCallbacksAndMessages(null)
+            mainHandler.postDelayed({
+                if (!isFinishing && !isDestroyed) {
+                    renderCrashWindowStart = System.currentTimeMillis()
+                    renderCrashCount = 0
+                    recreate()
+                }
+            }, RENDER_CRASH_BACKOFF_MS)
+        }
     }
 
     private fun hideOfflineOverlay() {
@@ -292,8 +382,8 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         try {
             val intent = Intent(this, SocketService::class.java).apply {
                 putExtra(SocketService.EXTRA_SERVER_URL, resolvedUrl)
-                putExtra(SocketService.EXTRA_AUTH_TOKEN, HomeOSAuth.loadAuthToken(sharedPreferences))
-                putExtra(SocketService.EXTRA_CSRF_TOKEN, HomeOSAuth.loadCsrfToken(sharedPreferences))
+                putExtra(SocketService.EXTRA_AUTH_TOKEN, HomeOSAuth.loadAuthToken(this@MainActivity))
+                putExtra(SocketService.EXTRA_CSRF_TOKEN, HomeOSAuth.loadCsrfToken(this@MainActivity))
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
@@ -310,8 +400,8 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             val serviceUrl = activeUrl.ifEmpty { lanUrl }
             val serviceIntent = Intent(this, SocketService::class.java).apply {
                 putExtra(SocketService.EXTRA_SERVER_URL, serviceUrl)
-                putExtra(SocketService.EXTRA_AUTH_TOKEN, HomeOSAuth.loadAuthToken(sharedPreferences))
-                putExtra(SocketService.EXTRA_CSRF_TOKEN, HomeOSAuth.loadCsrfToken(sharedPreferences))
+                putExtra(SocketService.EXTRA_AUTH_TOKEN, HomeOSAuth.loadAuthToken(this@MainActivity))
+                putExtra(SocketService.EXTRA_CSRF_TOKEN, HomeOSAuth.loadCsrfToken(this@MainActivity))
                 putExtra(SocketService.EXTRA_APP_FOREGROUND, true)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -422,13 +512,6 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         return false
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == FILECHOOSER_RESULTCODE && ::webViewController.isInitialized) {
-            webViewController.handleFileChooserResult(resultCode, data)
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         if (::webViewController.isInitialized) {
@@ -459,17 +542,8 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         handleIntent(intent)
     }
 
-    override fun onBackPressed() {
-        if (binding.settingsOverlay.visibility == View.VISIBLE) {
-            toggleSettingsOverlay(false)
-        } else if (::webViewController.isInitialized && webViewController.webView.canGoBack()) {
-            webViewController.webView.goBack()
-        } else if (!isKioskMode) {
-            super.onBackPressed()
-        }
-    }
-
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         if (::networkCoordinator.isInitialized) {
             networkCoordinator.cancelAll()
         }
@@ -503,7 +577,8 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     private fun toggleSettingsOverlay(show: Boolean) {
         if (show) {
             settingsController.prepareOverlay(true)
-            webViewController.setHardwareLayerEnabled(false)
+            // 隐藏加载遮罩，避免其拦截设置面板的触摸事件（输入框无法输入）。
+            binding.loadingOverlay.visibility = View.GONE
             binding.settingsOverlay.visibility = View.VISIBLE
             binding.settingsOverlay.animate()
                 .alpha(1f)
@@ -517,7 +592,6 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
                 .setInterpolator(android.view.animation.AccelerateInterpolator())
                 .withEndAction {
                     binding.settingsOverlay.visibility = View.GONE
-                    webViewController.setHardwareLayerEnabled(true)
                     applySystemImmersiveMode()
                 }
                 .start()
@@ -529,12 +603,31 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         binding.loadingOverlay.isFocusable = true
     }
 
+    /**
+     * 沉浸式全屏下（decorFitsSystemWindows=false）软键盘不会自动顶起内容，
+     * 这里监听 IME inset，弹出键盘时给设置面板底部加等高内边距，
+     * 使居中卡片整体上移，避免账号/密码输入框被键盘遮挡。
+     */
+    private fun setupImeInsetHandling() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.settingsOverlay) { view, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, imeBottom)
+            insets
+        }
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         val actionMasked = ev.actionMasked
         if (actionMasked == MotionEvent.ACTION_DOWN || actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
             if (handleAdminGesture(ev)) return true
         }
-        if (binding.loadingOverlay.visibility == View.VISIBLE) return true
+        // 仅在加载遮罩可见且未弹出设置面板时拦截触摸，
+        // 否则设置面板的输入框将无法获得点击/输入焦点。
+        if (binding.loadingOverlay.visibility == View.VISIBLE &&
+            binding.settingsOverlay.visibility != View.VISIBLE
+        ) {
+            return true
+        }
         return super.dispatchTouchEvent(ev)
     }
 
@@ -687,6 +780,14 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         }
     }
 
+    /** dp 转 px（整数），保证隐私弹窗在不同密度设备上比例一致。 */
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
+    /** dp 转 px（浮点），用于圆角/描边等。 */
+    private fun dpF(value: Float): Float =
+        value * resources.displayMetrics.density
+
     @SuppressLint("SetTextI18n")
     private fun showPrivacyPolicyDialog() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
@@ -698,7 +799,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#08080C"))
-            setPadding(48, 48, 48, 48)
+            setPadding(dp(24), dp(24), dp(24), dp(24))
             gravity = android.view.Gravity.CENTER_HORIZONTAL
         }
 
@@ -709,7 +810,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 40 }
+            ).apply { topMargin = dp(20) }
         })
 
         container.addView(android.widget.TextView(this).apply {
@@ -721,7 +822,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 16 }
+            ).apply { topMargin = dp(8) }
         })
 
         container.addView(android.widget.TextView(this).apply {
@@ -739,19 +840,19 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
                 0,
                 1f
             ).apply {
-                topMargin = 32
-                bottomMargin = 32
+                topMargin = dp(16)
+                bottomMargin = dp(16)
             }
             isVerticalScrollBarEnabled = false
         }
 
         val cardLayout = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
+            setPadding(dp(16), dp(16), dp(16), dp(16))
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(Color.parseColor("#0DFFFFFF"))
-                setStroke(2, Color.parseColor("#2600E5FF"))
-                cornerRadius = 24f
+                setStroke(dp(1), Color.parseColor("#2600E5FF"))
+                cornerRadius = dpF(12f)
             }
         }
 
@@ -807,11 +908,11 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
                 intArrayOf(Color.parseColor("#00E5FF"), Color.parseColor("#0086FF"))
-            ).apply { cornerRadius = 16f }
+            ).apply { cornerRadius = dpF(12f) }
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                120
-            ).apply { bottomMargin = 24 }
+                dp(52)
+            ).apply { bottomMargin = dp(12) }
             setOnClickListener {
                 dialog.dismiss()
                 sharedPreferences.edit().putBoolean("privacy_accepted", true).apply()
@@ -825,7 +926,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             setTextColor(Color.parseColor("#8E8E93"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER
-            setPadding(24, 24, 24, 24)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             isClickable = true
             setOnClickListener {
                 dialog.dismiss()

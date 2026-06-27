@@ -39,6 +39,7 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|locale|layoutDirection"
             android:screenOrientation="sensorLandscape"
+            android:windowSoftInputMode="adjustResize"
             android:showWhenLocked="true"
             android:turnScreenOn="true">
             <intent-filter>

@@ -6,9 +6,7 @@ import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
+import okhttp3.Request
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -25,13 +23,21 @@ class NetworkRoamingManager(context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val callbackGeneration = AtomicInteger(0)
 
-    private var lastUsedLocal = false
+    private var lastResolvedUrl = ""
+    private var lastResolvedIsLocal = false
     private var lastCheckTime = 0L
+    private var cachedLanUrl = ""
+    private var cachedWanUrl = ""
     private val cacheValidDuration = 30_000L
 
+    /**
+     * 解析最佳路由。
+     * @param forceFresh 为 true 时跳过缓存强制重新探测（用于离线恢复/用户手动重试）。
+     */
     fun resolveOptimalRoute(
         lanUrl: String,
         wanUrl: String,
+        forceFresh: Boolean = false,
         callback: (resolvedUrl: String, isLocal: Boolean) -> Unit
     ) {
         val generation = callbackGeneration.get()
@@ -47,10 +53,17 @@ class NetworkRoamingManager(context: Context) {
             return
         }
 
+        // 正/负结果均缓存：在缓存窗口内，无论上次走的是 LAN 还是 WAN 都直接复用，
+        // 避免每次路由都做一次 500ms 的 LAN 探测。恢复/重试场景用 forceFresh 跳过。
+        // 注意：当传入的 lan/wan 地址与缓存时不同（用户改了服务器配置）时，缓存立即失效，
+        // 否则会把旧服务器的解析结果错误地用到新配置上。
         val now = System.currentTimeMillis()
-        if (lastUsedLocal && (now - lastCheckTime) < cacheValidDuration) {
-            Log.d(TAG, "使用缓存的局域网路径: $lanUrl")
-            deliverCallback(generation, lanUrl, true, callback)
+        val urlsUnchanged = lanUrl == cachedLanUrl && wanUrl == cachedWanUrl
+        if (!forceFresh && urlsUnchanged && lastResolvedUrl.isNotEmpty() &&
+            (now - lastCheckTime) < cacheValidDuration
+        ) {
+            Log.d(TAG, "使用缓存路由（isLocal=$lastResolvedIsLocal）: $lastResolvedUrl")
+            deliverCallback(generation, lastResolvedUrl, lastResolvedIsLocal, callback)
             return
         }
 
@@ -60,13 +73,17 @@ class NetworkRoamingManager(context: Context) {
             mainHandler.post {
                 if (generation != callbackGeneration.get()) return@post
                 lastCheckTime = System.currentTimeMillis()
+                cachedLanUrl = lanUrl
+                cachedWanUrl = wanUrl
                 if (isLanAvailable) {
                     Log.d(TAG, "已解析到局域网: $lanUrl")
-                    lastUsedLocal = true
+                    lastResolvedUrl = lanUrl
+                    lastResolvedIsLocal = true
                     callback(lanUrl, true)
                 } else {
                     Log.d(TAG, "局域网连接超时或不可达。路由到公网: $wanUrl")
-                    lastUsedLocal = false
+                    lastResolvedUrl = wanUrl
+                    lastResolvedIsLocal = false
                     callback(wanUrl, false)
                 }
             }
@@ -105,21 +122,23 @@ class NetworkRoamingManager(context: Context) {
     }
 
     private fun testConnection(urlString: String, timeoutMs: Int): Boolean {
-        var connection: HttpURLConnection? = null
         return try {
-            val url = URL(urlString)
-            connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = timeoutMs
-            connection.readTimeout = timeoutMs
-            connection.requestMethod = "HEAD"
-            connection.setRequestProperty("User-Agent", HomeOSAuth.APP_USER_AGENT)
-            connection.connect()
-            connection.responseCode in 200..399
-        } catch (e: IOException) {
+            val request = Request.Builder()
+                .url(urlString)
+                .head()
+                .header("User-Agent", HomeOSAuth.APP_USER_AGENT)
+                .build()
+            val client = HttpClientProvider.withTimeouts(
+                connectMs = timeoutMs.toLong(),
+                readMs = timeoutMs.toLong(),
+                callMs = (timeoutMs * 2).toLong()
+            )
+            client.newCall(request).execute().use { response ->
+                response.code in 200..399
+            }
+        } catch (e: Exception) {
             Log.w(TAG, "连接 $urlString 失败: ${e.message}")
             false
-        } finally {
-            connection?.disconnect()
         }
     }
 

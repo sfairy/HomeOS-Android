@@ -1,7 +1,9 @@
 package com.homeos.app
 
 /**
- * 向 WebView 注入 viewport 与 CSS 合成层缩放脚本（事件驱动，无 RAF 循环）。
+ * 向 WebView 注入固定宽度的 viewport（事件驱动，无 RAF 循环、无 transform 二次缩放）。
+ * 实际的等比铺满由 WebSettings 的 useWideViewPort + loadWithOverviewMode 完成，
+ * 这里只负责保证页面以「设计宽度」布局，并防止站点脚本篡改 viewport。
  */
 object ViewportInjector {
 
@@ -17,16 +19,15 @@ object ViewportInjector {
     """.trimIndent()
 
     /**
-     * 首次注入：固定 viewport 宽度、触摸滚动优化、CSS transform 等比缩放。
+     * 注入并守护 viewport 宽度。observer 带防抖，避免 SPA 频繁改动 head 时高频回调。
      */
-    fun buildInstallScript(designWidth: Int, designHeight: Int, screenWidth: Int): String {
+    fun buildInstallScript(designWidth: Int): String {
         return """
             (function(){
               if (window.__homeosViewportInjected) return;
               window.__homeosViewportInjected = true;
 
               var W = $designWidth;
-              var H = $designHeight;
 
               function applyViewport() {
                 var m = document.querySelector('meta[name=viewport]');
@@ -47,65 +48,48 @@ object ViewportInjector {
                 }
               }
 
-              function applyScale(sw) {
-                var scale = sw / W;
-                var root = document.documentElement;
-                root.style.transform = 'scale(' + scale + ')';
-                root.style.transformOrigin = 'top left';
-                root.style.width = W + 'px';
-                root.style.height = H + 'px';
-              }
-
-              function applyAll() {
-                applyViewport();
-                applyScale(window.innerWidth || ${screenWidth});
-              }
-
-              applyAll();
+              applyViewport();
 
               if (window.__homeosViewportTeardown) return;
 
               var head = document.head || document.getElementsByTagName('head')[0];
               var observer = null;
+              var debounceTimer = null;
+              function scheduleApply() {
+                if (debounceTimer) return;
+                debounceTimer = setTimeout(function(){
+                  debounceTimer = null;
+                  applyViewport();
+                }, 200);
+              }
+
               if (head && window.MutationObserver) {
                 observer = new MutationObserver(function(mutations) {
                   for (var i = 0; i < mutations.length; i++) {
-                    var m = mutations[i];
-                    if (m.type === 'childList' || m.type === 'attributes') {
-                      applyViewport();
-                      break;
+                    var t = mutations[i].target;
+                    // 仅在 viewport meta 节点被改动时才重新应用，减少无谓回调。
+                    if (t && t.nodeName === 'META' && t.getAttribute && t.getAttribute('name') === 'viewport') {
+                      scheduleApply();
+                      return;
+                    }
+                    if (mutations[i].type === 'childList') {
+                      scheduleApply();
+                      return;
                     }
                   }
                 });
-                observer.observe(head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'name'] });
+                observer.observe(head, {
+                  childList: true,
+                  subtree: false,
+                  attributes: true,
+                  attributeFilter: ['content', 'name']
+                });
               }
-
-              var onResize = function() { applyScale(window.innerWidth || ${screenWidth}); };
-              window.addEventListener('resize', onResize);
-              window.addEventListener('orientationchange', onResize);
 
               window.__homeosViewportTeardown = function() {
                 if (observer) { observer.disconnect(); observer = null; }
-                window.removeEventListener('resize', onResize);
-                window.removeEventListener('orientationchange', onResize);
+                if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
               };
-            })();
-        """.trimIndent()
-    }
-
-    /** 屏幕尺寸变化时仅更新 transform，避免全页 reflow。 */
-    fun buildScaleUpdateScript(designWidth: Int, designHeight: Int, screenWidth: Int): String {
-        val scale = screenWidth.toDouble() / designWidth.toDouble()
-        return """
-            (function(){
-              var W = $designWidth;
-              var H = $designHeight;
-              var scale = $scale;
-              var root = document.documentElement;
-              root.style.transform = 'scale(' + scale + ')';
-              root.style.transformOrigin = 'top left';
-              root.style.width = W + 'px';
-              root.style.height = H + 'px';
             })();
         """.trimIndent()
     }

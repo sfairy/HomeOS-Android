@@ -1,6 +1,5 @@
 package com.homeos.app
 
-import android.content.SharedPreferences
 import android.util.Log
 import android.view.View
 import com.homeos.app.databinding.ActivityMainBinding
@@ -12,7 +11,6 @@ import java.util.concurrent.Executor
 class NetworkCoordinator(
     private val binding: ActivityMainBinding,
     private val roamingManager: NetworkRoamingManager,
-    private val sharedPreferences: SharedPreferences,
     private val executor: Executor,
     private val webViewController: WebViewController,
     private val isAlive: () -> Boolean,
@@ -35,8 +33,19 @@ class NetworkCoordinator(
     private val loadTimeoutRunnable = Runnable { handleLoadTimeout() }
 
     private var recoveryBackoffMs = INITIAL_RECOVERY_DELAY_MS
+    private var freshLoginDone = false
 
-    fun routeAndLoadUrl() {
+    private val context get() = binding.root.context
+
+    /**
+     * 配置（服务器地址/账号密码）变更后调用。
+     * @param alreadyLoggedIn 设置页是否已用新配置成功登录（此时无需在加载时再次登录）。
+     */
+    fun resetLoginSession(alreadyLoggedIn: Boolean) {
+        freshLoginDone = alreadyLoggedIn
+    }
+
+    fun routeAndLoadUrl(forceFresh: Boolean = false) {
         if (!isAlive()) return
         isErrorState = false
         onHideOffline()
@@ -49,7 +58,7 @@ class NetworkCoordinator(
         binding.loadingText.text = getString(R.string.connecting)
         binding.subLoadingText.text = getString(R.string.checking_network_health)
 
-        roamingManager.resolveOptimalRoute(getLanUrl(), getWanUrl()) { resolvedUrl, isLocal ->
+        roamingManager.resolveOptimalRoute(getLanUrl(), getWanUrl(), forceFresh) { resolvedUrl, isLocal ->
             if (!isAlive()) return@resolveOptimalRoute
 
             if (resolvedUrl.isEmpty()) {
@@ -69,12 +78,39 @@ class NetworkCoordinator(
             }
             Log.i(TAG, "最佳路由已解析。正在加载 URL: $resolvedUrl")
 
-            val authToken = HomeOSAuth.loadAuthToken(sharedPreferences)
-            val csrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
+            val authToken = HomeOSAuth.loadAuthToken(context)
+            val csrfToken = HomeOSAuth.loadCsrfToken(context)
+            val savedUser = HomeOSAuth.loadUsername(context)
+            val savedPass = HomeOSAuth.loadPassword(context)
 
-            if (authToken.isNotEmpty()) {
+            // 本进程内仅在首次成功登录前用账号密码静默重登录一次，换取全新有效令牌；
+            // 之后的断网恢复/重试直接复用令牌，避免每次恢复都打一次登录请求（省时、减轻服务端压力）。
+            // 这样既修复了「冷启动需重新输入账号密码」，又不会在网络抖动时反复登录。
+            if (savedUser.isNotEmpty() && savedPass.isNotEmpty() && !freshLoginDone) {
                 executor.execute {
-                    HomeOSAuth.injectCookies(resolvedUrl, authToken, csrfToken)
+                    val loginResult = HomeOSAuth.performLogin(resolvedUrl, savedUser, savedPass)
+                    when {
+                        loginResult.success -> {
+                            freshLoginDone = true
+                            HomeOSAuth.saveTokens(
+                                context,
+                                loginResult.authToken,
+                                loginResult.csrfToken
+                            )
+                            HomeOSAuth.injectCookies(
+                                resolvedUrl,
+                                loginResult.authToken,
+                                loginResult.csrfToken
+                            )
+                            // 关键：用新令牌刷新后台轮询服务，否则后台仍用旧（可能已过期）令牌。
+                            recoveryHandler.post {
+                                if (isAlive()) onServiceUrlResolved(resolvedUrl)
+                            }
+                        }
+                        // 重新登录失败（例如网络暂时不可用）时，回退到已存储的令牌。
+                        authToken.isNotEmpty() ->
+                            HomeOSAuth.injectCookies(resolvedUrl, authToken, csrfToken)
+                    }
                     recoveryHandler.post {
                         if (isAlive()) loadActiveUrl(resolvedUrl)
                     }
@@ -82,23 +118,10 @@ class NetworkCoordinator(
                 return@resolveOptimalRoute
             }
 
-            val savedUser = sharedPreferences.getString("auth_user", "") ?: ""
-            val savedPass = sharedPreferences.getString("auth_pass", "") ?: ""
-            if (savedUser.isNotEmpty() && savedPass.isNotEmpty()) {
+            // 已登录过或仅有令牌：直接注入令牌后加载。
+            if (authToken.isNotEmpty()) {
                 executor.execute {
-                    val loginResult = HomeOSAuth.performLogin(resolvedUrl, savedUser, savedPass)
-                    if (loginResult.success) {
-                        sharedPreferences.edit().apply {
-                            putString(HomeOSAuth.KEY_AUTH_TOKEN, loginResult.authToken)
-                            putString(HomeOSAuth.KEY_CSRF_TOKEN, loginResult.csrfToken)
-                            apply()
-                        }
-                        HomeOSAuth.injectCookies(
-                            resolvedUrl,
-                            loginResult.authToken,
-                            loginResult.csrfToken
-                        )
-                    }
+                    HomeOSAuth.injectCookies(resolvedUrl, authToken, csrfToken)
                     recoveryHandler.post {
                         if (isAlive()) loadActiveUrl(resolvedUrl)
                     }
@@ -146,7 +169,7 @@ class NetworkCoordinator(
     fun attemptAutoRecovery() {
         if (!isAlive()) return
         Log.d(TAG, "正在尝试自动网络路径恢复（退避 ${recoveryBackoffMs}ms）...")
-        roamingManager.resolveOptimalRoute(getLanUrl(), getWanUrl()) { resolvedUrl, _ ->
+        roamingManager.resolveOptimalRoute(getLanUrl(), getWanUrl(), forceFresh = true) { resolvedUrl, _ ->
             if (!isAlive()) return@resolveOptimalRoute
             if (resolvedUrl.isNotEmpty()) {
                 recoveryHandler.removeCallbacks(recoveryRunnable)
@@ -167,7 +190,7 @@ class NetworkCoordinator(
         isErrorState = false
         onHideOffline()
         onResumeBackgroundPolling()
-        routeAndLoadUrl()
+        routeAndLoadUrl(forceFresh = true)
     }
 
     private fun handleLoadTimeout() {

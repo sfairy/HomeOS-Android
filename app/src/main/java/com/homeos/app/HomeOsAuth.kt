@@ -1,10 +1,11 @@
 package com.homeos.app
 
-import android.content.SharedPreferences
+import android.content.Context
 import android.webkit.CookieManager
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * HomeOS 后端认证工具类
@@ -23,7 +24,11 @@ data class HomeOSLoginResult(
 object HomeOSAuth {
     const val KEY_AUTH_TOKEN = "auth_token"  // 认证令牌存储键名
     const val KEY_CSRF_TOKEN = "csrf_token"  // CSRF 令牌存储键名
+    const val KEY_AUTH_USER = "auth_user"    // 账号存储键名
+    const val KEY_AUTH_PASS = "auth_pass"    // 密码存储键名
     const val APP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"  // 桌面版 User-Agent，确保服务端返回桌面布局而非手机版
+    private const val COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30  // 持久化 Cookie 有效期（30 天）
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     /**
      * 执行登录请求
@@ -33,81 +38,52 @@ object HomeOSAuth {
      * @return 登录结果对象
      */
     fun performLogin(baseUrl: String, user: String, pass: String): HomeOSLoginResult {
-        var connection: HttpURLConnection? = null
         return try {
-            // 清理 URL 末尾的斜杠
             val cleanUrl = baseUrl.trimEnd('/')
-            val url = URL("$cleanUrl/api/v1/auth/login")
-            connection = url.openConnection() as HttpURLConnection
-            
-            // 设置连接超时时间
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.requestMethod = "POST"
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("User-Agent", APP_USER_AGENT)
-            connection.doOutput = true
-
-            // 构建登录请求 JSON 参数
             val jsonParam = JSONObject().apply {
                 put("username", user)
                 put("password", pass)
             }
+            val request = Request.Builder()
+                .url("$cleanUrl/api/v1/auth/login")
+                .header("User-Agent", APP_USER_AGENT)
+                .post(jsonParam.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
 
-            // 发送请求
-            connection.outputStream.use { os ->
-                val bytes = jsonParam.toString().toByteArray(Charsets.UTF_8)
-                os.write(bytes)
-            }
+            val client = HttpClientProvider.withTimeouts(connectMs = 5000, readMs = 5000)
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string() ?: ""
 
-            // 处理响应
-            val responseCode = connection.responseCode
-            val body = readResponseBody(connection, responseCode)
+                if (!response.isSuccessful) {
+                    return HomeOSLoginResult(success = false, errorMessage = "HTTP ${response.code}")
+                }
 
-            // 检查 HTTP 状态码
-            if (responseCode !in 200..299) {
-                return HomeOSLoginResult(
-                    success = false,
-                    errorMessage = "HTTP $responseCode"
+                val jsonObj = runCatching { JSONObject(body) }.getOrNull()
+
+                if (jsonObj?.optBoolean("requiresMfa", false) == true) {
+                    return HomeOSLoginResult(
+                        success = false,
+                        requiresMfa = true,
+                        username = jsonObj.optString("username", user),
+                        errorMessage = "需要 MFA 验证"
+                    )
+                }
+
+                val (authToken, csrfToken) = extractCookies(response.headers("Set-Cookie"))
+                if (authToken.isEmpty()) {
+                    return HomeOSLoginResult(success = false, errorMessage = "缺少 auth_token cookie")
+                }
+
+                HomeOSLoginResult(
+                    success = true,
+                    authToken = authToken,
+                    csrfToken = csrfToken,
+                    username = jsonObj?.optString("username", user) ?: user,
+                    role = jsonObj?.optString("role", "") ?: ""
                 )
             }
-
-            // 解析 JSON 响应
-            val jsonObj = runCatching { JSONObject(body) }.getOrNull()
-            
-            // 检查是否需要 MFA 验证
-            if (jsonObj?.optBoolean("requiresMfa", false) == true) {
-                return HomeOSLoginResult(
-                    success = false,
-                    requiresMfa = true,
-                    username = jsonObj.optString("username", user),
-                    errorMessage = "需要 MFA 验证"
-                )
-            }
-
-            // 从响应头提取 Cookie
-            val (authToken, csrfToken) = extractCookiesFromConnection(connection)
-            if (authToken.isEmpty()) {
-                return HomeOSLoginResult(
-                    success = false,
-                    errorMessage = "缺少 auth_token cookie"
-                )
-            }
-
-            // 返回成功结果
-            HomeOSLoginResult(
-                success = true,
-                authToken = authToken,
-                csrfToken = csrfToken,
-                username = jsonObj?.optString("username", user) ?: user,
-                role = jsonObj?.optString("role", "") ?: ""
-            )
         } catch (e: Exception) {
-            // 捕获异常并返回失败结果
             HomeOSLoginResult(success = false, errorMessage = e.message)
-        } finally {
-            // 确保关闭连接
-            connection?.disconnect()
         }
     }
 
@@ -122,44 +98,49 @@ object HomeOSAuth {
         
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
-        cookieManager.setCookie(baseUrl, "auth_token=$authToken; Path=/; HttpOnly")
-        
+        // 设置 Max-Age 使其成为持久化 Cookie，应用进程重启后 WebView 仍能保留会话，
+        // 避免每次冷启动都退回到登录页。
+        cookieManager.setCookie(baseUrl, "auth_token=$authToken; Path=/; Max-Age=$COOKIE_MAX_AGE_SECONDS; HttpOnly")
+
         if (csrfToken.isNotEmpty()) {
-            cookieManager.setCookie(baseUrl, "csrf_token=$csrfToken; Path=/")
+            cookieManager.setCookie(baseUrl, "csrf_token=$csrfToken; Path=/; Max-Age=$COOKIE_MAX_AGE_SECONDS")
         }
         
         cookieManager.flush()
     }
 
     /**
-     * 清除所有认证令牌
-     * @param prefs SharedPreferences 实例
+     * 清除所有认证凭据（令牌 + 账号密码）。
      */
-    fun clearAuthTokens(prefs: SharedPreferences) {
-        prefs.edit().apply {
-            remove(KEY_AUTH_TOKEN)
-            remove(KEY_CSRF_TOKEN)
-            remove("auth_user")
-            remove("auth_pass")
-            apply()
-        }
+    fun clearAuthTokens(context: Context) {
+        SecureStore.remove(context, KEY_AUTH_TOKEN, KEY_CSRF_TOKEN, KEY_AUTH_USER, KEY_AUTH_PASS)
     }
 
-    /**
-     * 加载认证令牌
-     * @param prefs SharedPreferences 实例
-     * @return 认证令牌字符串
-     */
-    fun loadAuthToken(prefs: SharedPreferences): String =
-        prefs.getString(KEY_AUTH_TOKEN, "") ?: ""
+    /** 加载认证令牌（来自加密存储）。 */
+    fun loadAuthToken(context: Context): String =
+        SecureStore.getString(context, KEY_AUTH_TOKEN)
 
-    /**
-     * 加载 CSRF 令牌
-     * @param prefs SharedPreferences 实例
-     * @return CSRF 令牌字符串
-     */
-    fun loadCsrfToken(prefs: SharedPreferences): String =
-        prefs.getString(KEY_CSRF_TOKEN, "") ?: ""
+    /** 加载 CSRF 令牌（来自加密存储）。 */
+    fun loadCsrfToken(context: Context): String =
+        SecureStore.getString(context, KEY_CSRF_TOKEN)
+
+    /** 加载已保存的账号。 */
+    fun loadUsername(context: Context): String =
+        SecureStore.getString(context, KEY_AUTH_USER)
+
+    /** 加载已保存的密码。 */
+    fun loadPassword(context: Context): String =
+        SecureStore.getString(context, KEY_AUTH_PASS)
+
+    /** 保存账号与密码到加密存储。 */
+    fun saveCredentials(context: Context, user: String, pass: String) {
+        SecureStore.putStrings(context, mapOf(KEY_AUTH_USER to user, KEY_AUTH_PASS to pass))
+    }
+
+    /** 保存认证/CSRF 令牌到加密存储。 */
+    fun saveTokens(context: Context, authToken: String, csrfToken: String) {
+        SecureStore.putStrings(context, mapOf(KEY_AUTH_TOKEN to authToken, KEY_CSRF_TOKEN to csrfToken))
+    }
 
     /**
      * 构建 Cookie 请求头
@@ -175,45 +156,18 @@ object HomeOSAuth {
     }
 
     /**
-     * 读取响应体内容
-     * @param connection HTTP 连接
-     * @param responseCode 响应状态码
-     * @return 响应体字符串
-     */
-    private fun readResponseBody(connection: HttpURLConnection, responseCode: Int): String {
-        val stream = if (responseCode in 200..299) {
-            connection.inputStream
-        } else {
-            connection.errorStream
-        } ?: return ""
-        return stream.bufferedReader().use { it.readText() }
-    }
-
-    /**
-     * 从 HTTP 连接中提取 Cookie
-     * @param connection HTTP 连接
+     * 从 Set-Cookie 响应头列表中提取认证/CSRF 令牌。
      * @return Pair(authToken, csrfToken)
      */
-    private fun extractCookiesFromConnection(connection: HttpURLConnection): Pair<String, String> {
+    private fun extractCookies(setCookieValues: List<String>): Pair<String, String> {
         var authToken = ""
         var csrfToken = ""
-
-        // HttpURLConnection 的 header index=0 是状态行，key 为 null。
-        // 直接使用 headerFields 更可靠（同名 header 可能出现多次）。
-        val headerFields = connection.headerFields ?: emptyMap()
-        val setCookieValues = headerFields.entries
-            .firstOrNull { (k, _) -> k != null && k.equals("Set-Cookie", ignoreCase = true) }
-            ?.value
-            ?.filterNotNull()
-            ?: emptyList()
-
         for (value in setCookieValues) {
             when {
                 value.startsWith("auth_token=") -> authToken = parseCookieValue(value)
                 value.startsWith("csrf_token=") -> csrfToken = parseCookieValue(value)
             }
         }
-
         return authToken to csrfToken
     }
 

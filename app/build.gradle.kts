@@ -53,7 +53,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             val keystoreFile = file(signingProp("storeFile", "KEYSTORE_FILE", "homeos-release-key.jks"))
             if (keystoreFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
@@ -91,6 +92,8 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.webkit:webkit:1.10.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation("com.google.firebase:firebase-messaging-ktx:23.4.1")
     implementation("com.huawei.hms:push:6.12.0.300")

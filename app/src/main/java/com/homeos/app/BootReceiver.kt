@@ -44,8 +44,8 @@ class BootReceiver : BroadcastReceiver() {
 
             // 获取服务器地址和认证令牌
             val lanUrl = sharedPreferences.getString("server_lan_url", "http://10.0.0.90:8501") ?: "http://10.0.0.90:8501"
-            val authToken = HomeOSAuth.loadAuthToken(sharedPreferences)
-            val csrfToken = HomeOSAuth.loadCsrfToken(sharedPreferences)
+            val authToken = HomeOSAuth.loadAuthToken(context)
+            val csrfToken = HomeOSAuth.loadCsrfToken(context)
 
             // 创建服务启动意图
             val serviceIntent = Intent(context, SocketService::class.java).apply {
