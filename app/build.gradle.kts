@@ -21,9 +21,9 @@ fun signingProp(propertyKey: String, envKey: String, default: String): String =
         ?: keystoreProperties.getProperty(propertyKey, default)
 
 // 根据当前北京时间自动生成版本号
-val buildTime = SimpleDateFormat("yyyyMMddHH").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(Date())
-val versionCodeVal = buildTime.toInt()
-val versionNameVal = SimpleDateFormat("yyyy.MM.dd.HH").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(Date())
+val now = Date()
+val versionCodeVal = SimpleDateFormat("yyyyMMddHH").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(now).toInt()
+val versionNameVal = SimpleDateFormat("yyyy.M.d.H.mm").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(now)
 
 android {
     namespace = "com.homeos.app"
