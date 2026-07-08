@@ -99,6 +99,7 @@ class WebViewController(
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                injectInputFocusStabilizer(view)
                 onPageReady()
             }
 
@@ -180,6 +181,59 @@ class WebViewController(
             destroy()
         }
         nativeBridge = null
+    }
+
+    /**
+     * 阻止 WebView/Chromium 在 input/select 获焦时自动滚动页面，
+     * 避免 Pad 上点击输入框或下拉菜单后页面偏移且收起后无法复原。
+     */
+    private fun injectInputFocusStabilizer(view: WebView?) {
+        if (view == null) return
+        val script = """
+            (function() {
+              if (window.__homeosFocusStabilizer) return;
+              window.__homeosFocusStabilizer = true;
+              var saved = null;
+              var formFocused = false;
+              var selector = 'input,textarea,select,[contenteditable="true"],[contenteditable=true]';
+              function capture() {
+                saved = { x: window.scrollX || 0, y: window.scrollY || 0 };
+              }
+              function restore() {
+                if (!saved) return;
+                window.scrollTo(saved.x, saved.y);
+              }
+              function isFormControl(el) {
+                if (!el || el.nodeType !== 1) return false;
+                if (el.matches && el.matches(selector)) return true;
+                var role = el.getAttribute && el.getAttribute('role');
+                return role === 'combobox' || role === 'listbox' || role === 'textbox';
+              }
+              document.addEventListener('focusin', function(e) {
+                if (!isFormControl(e.target)) return;
+                if (!formFocused) capture();
+                formFocused = true;
+                requestAnimationFrame(restore);
+                setTimeout(restore, 50);
+                setTimeout(restore, 150);
+              }, true);
+              document.addEventListener('focusout', function() {
+                setTimeout(function() {
+                  var active = document.activeElement;
+                  if (isFormControl(active)) return;
+                  formFocused = false;
+                  restore();
+                  saved = null;
+                }, 120);
+              }, true);
+              if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', function() {
+                  if (formFocused) requestAnimationFrame(restore);
+                });
+              }
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script, null)
     }
 
     fun handleFileChooserResult(resultCode: Int, data: Intent?) {

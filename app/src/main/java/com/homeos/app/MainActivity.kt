@@ -176,6 +176,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
 
         setupGestureInterceptors()
         setupOfflineOverlayListeners()
+        setupKeyboardStableLayout()
         setupImeInsetHandling()
 
         startServices()
@@ -588,6 +589,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
                 .setInterpolator(android.view.animation.AccelerateInterpolator())
                 .withEndAction {
                     binding.settingsOverlay.visibility = View.GONE
+                    binding.settingsOverlay.setPadding(0, 0, 0, 0)
                     applySystemImmersiveMode()
                 }
                 .start()
@@ -597,6 +599,22 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     private fun setupGestureInterceptors() {
         binding.loadingOverlay.isClickable = true
         binding.loadingOverlay.isFocusable = true
+    }
+
+    /**
+     * WebView 主界面模式下吞掉 IME inset，避免软键盘弹出时 WebView 视口高度变化，
+     * 触发前端 useScaling 重算导致整页偏移且键盘收起后无法恢复。
+     * 设置面板打开时不干预，由其自身的 IME listener 处理。
+     */
+    private fun setupKeyboardStableLayout() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.mainRoot) { _, insets ->
+            if (binding.settingsOverlay.visibility == View.VISIBLE) {
+                return@setOnApplyWindowInsetsListener insets
+            }
+            WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.ime(), androidx.core.graphics.Insets.NONE)
+                .build()
+        }
     }
 
     /**
