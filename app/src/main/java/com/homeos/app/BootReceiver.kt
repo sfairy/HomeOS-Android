@@ -52,6 +52,7 @@ class BootReceiver : BroadcastReceiver() {
                 putExtra(SocketService.EXTRA_SERVER_URL, lanUrl)
                 putExtra(SocketService.EXTRA_AUTH_TOKEN, authToken)
                 putExtra(SocketService.EXTRA_CSRF_TOKEN, csrfToken)
+                putExtra(SocketService.EXTRA_APP_FOREGROUND, false)
             }
 
             // 启动服务（根据 Android 版本选择不同方式）

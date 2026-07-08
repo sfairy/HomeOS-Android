@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     private var lastThreeFingerTapTime = 0L
     private var cornerClickCount = 0
     private var lastCornerClickTime = 0L
+    private var isActivityInForeground = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -383,6 +384,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
                 putExtra(SocketService.EXTRA_SERVER_URL, resolvedUrl)
                 putExtra(SocketService.EXTRA_AUTH_TOKEN, HomeOSAuth.loadAuthToken(this@MainActivity))
                 putExtra(SocketService.EXTRA_CSRF_TOKEN, HomeOSAuth.loadCsrfToken(this@MainActivity))
+                putExtra(SocketService.EXTRA_APP_FOREGROUND, isActivityInForeground)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
@@ -513,6 +515,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
 
     override fun onResume() {
         super.onResume()
+        isActivityInForeground = true
         if (::webViewController.isInitialized) {
             webViewController.resume()
         }
@@ -521,6 +524,7 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
     }
 
     override fun onPause() {
+        isActivityInForeground = false
         if (::webViewController.isInitialized) {
             webViewController.pause()
         }
