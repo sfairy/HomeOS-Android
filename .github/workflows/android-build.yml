@@ -69,4 +69,4 @@ jobs:
       with:
         name: HomeOSAPP-mapping
         path: app/build/outputs/mapping/release/mapping.txt
-        if-no-file-found: warn
+        if-no-files-found: warn
