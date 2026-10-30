@@ -13,8 +13,14 @@
         android:id="@+id/webView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/bg_obsidian"
-        android:visibility="invisible" />
+        android:background="@color/bg_obsidian" />
+    <!--
+        注意：这里不要加 android:visibility="invisible"。
+        Android WebView 在 View 不可见时不会建立页面合成器表面，总览的 3D 户型舞台
+        （WebGL）会拿不到可用的 GL 上下文，之后即使再设为 VISIBLE 也只剩空白画布，
+        而普通 DOM 界面照常显示 —— 表现为「只有 App 里 3D 不出来、周边 UI 都正常」。
+        首屏遮挡交给下面的 loadingOverlay（不透明纯色）即可。
+    -->
 
     <!-- Neon Cyberpunk Splash / Loading Overlay -->
     <RelativeLayout
