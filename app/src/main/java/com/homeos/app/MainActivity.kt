@@ -581,11 +581,6 @@ class MainActivity : AppCompatActivity(), NativeBridgeHost {
             // 隐藏加载遮罩，避免其拦截设置面板的触摸事件（输入框无法输入）。
             binding.loadingOverlay.visibility = View.GONE
             binding.settingsOverlay.visibility = View.VISIBLE
-            // 顺手跑一次 3D 自检：三指三连击是现场唯一的排障入口，
-            // 借它把 WebGL2 / 舞台 iframe / 画布尺寸 的结论用对话框报出来（release 包也能看）。
-            if (::webViewController.isInitialized) {
-                webViewController.runRenderDiagnostics(showToast = true)
-            }
             binding.settingsOverlay.animate()
                 .alpha(1f)
                 .setDuration(200)
