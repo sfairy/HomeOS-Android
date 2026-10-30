@@ -29,6 +29,13 @@ class WebViewController(
     private val fileChooserLauncher: (Intent) -> Unit
 ) {
     private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
+    /**
+     * 最近若干条 console 异常（error / warning）。
+     *
+     * 舞台 iframe 内部的前端异常只会走 console.error，release 包既不能用
+     * `chrome://inspect` 也拿不到 logcat；把它挂在自检结论后面，用户截图一次就能带全证据。
+     */
+    private val recentConsoleErrors = ArrayDeque<String>()
     private var nativeBridge: NativeBridge? = null
     private var isDestroying = false
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -112,7 +119,15 @@ class WebViewController(
                 consoleMessage ?: return false
                 val detail = "${consoleMessage.message()} " +
                     "(${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})"
-                when (consoleMessage.messageLevel()) {
+                val level = consoleMessage.messageLevel()
+                // 只留异常类消息：正常日志会把证据挤出缓冲。
+                if (level == ConsoleMessage.MessageLevel.ERROR ||
+                    level == ConsoleMessage.MessageLevel.WARNING
+                ) {
+                    recentConsoleErrors.addLast(detail.take(220))
+                    while (recentConsoleErrors.size > CONSOLE_BUFFER_SIZE) recentConsoleErrors.removeFirst()
+                }
+                when (level) {
                     ConsoleMessage.MessageLevel.ERROR ->
                         android.util.Log.e("HomeOSWebView", detail)
                     ConsoleMessage.MessageLevel.WARNING ->
@@ -276,26 +291,37 @@ class WebViewController(
      */
     private fun scheduleRenderDiagnostics(view: WebView?) {
         if (view == null) return
+        // 两次采样：8s 可能还没挂载舞台（展示页要等数据），第一次没看到宿主就不报，
+        // 交给 20s 那次下结论。
         mainHandler.postDelayed({
             if (isDestroying) return@postDelayed
-            runRenderDiagnostics(showToast = false)
-        }, 4000L)
+            runRenderDiagnostics(showToast = true, onlyOnProblem = true, silentWhenNoHost = true)
+        }, 8000L)
+        mainHandler.postDelayed({
+            if (isDestroying) return@postDelayed
+            runRenderDiagnostics(showToast = true, onlyOnProblem = true)
+        }, 20000L)
     }
 
     /**
-     * 主动跑一次 3D 自检并把结论弹成 Toast。
+     * 主动跑一次 3D 自检并把结论弹成对话框。
      *
-     * release 包无法用 `chrome://inspect` 调试，真机现场也常常拿不到 adb；入口挂在
-     * 三指三连击打开的设置面板上，用户点开就能用肉眼把结论读出来（截图即可反馈）。
+     * release 包无法用 `chrome://inspect` 调试，真机现场也常常拿不到 adb；两处入口：
+     * 页面就绪 8 秒后自动跑一次（仅在有异常时弹），以及三指三连击打开的设置面板。
+     * 结论必须覆盖到**舞台 iframe 内部** —— canvas 在 iframe 里，只看主框架永远查不到。
      */
-    fun runRenderDiagnostics(showToast: Boolean = true) {
+    fun runRenderDiagnostics(
+        showToast: Boolean = true,
+        onlyOnProblem: Boolean = false,
+        silentWhenNoHost: Boolean = false,
+    ) {
         if (isDestroying) return
         val script = """
             (function () {
-              function probeGl(name) {
+              function probeGl(win) {
                 try {
-                  var canvas = document.createElement('canvas');
-                  var gl = canvas.getContext(name);
+                  var canvas = win.document.createElement('canvas');
+                  var gl = canvas.getContext('webgl2');
                   if (!gl) return false;
                   var lose = gl.getExtension('WEBGL_lose_context');
                   lose && lose.loseContext();
@@ -307,23 +333,56 @@ class WebViewController(
               for (var i = 0; i < nodes.length; i++) {
                 var host = nodes[i];
                 var rect = host.getBoundingClientRect();
-                var canvas = host.querySelector('canvas');
-                var runtime = host.querySelector('.hb-interaction3d-runtime');
-                hosts.push({
+                var record = {
                   access: host.dataset ? (host.dataset.access || '') : '',
                   styleState: host.dataset ? (host.dataset.styleState || '') : '',
-                  runtime: runtime ? runtime.className : '',
-                  canvas: canvas ? (canvas.width + 'x' + canvas.height) : '',
                   box: Math.round(rect.width) + 'x' + Math.round(rect.height),
-                  text: (host.textContent || '').slice(0, 60)
-                });
+                  runtime: '',
+                  text: (host.textContent || '').trim().slice(0, 40),
+                  origin: 'no-iframe',
+                  stageMark: '',
+                  canvas: '',
+                  canvasCss: '',
+                  frameViewport: ''
+                };
+                var runtime = host.querySelector('.hb-interaction3d-runtime');
+                if (runtime) record.runtime = runtime.className;
+                var frame = host.querySelector('iframe');
+                if (frame) {
+                  var frameRect = frame.getBoundingClientRect();
+                  record.frameBox = Math.round(frameRect.width) + 'x' + Math.round(frameRect.height);
+                  record.frameSrc = String(frame.getAttribute('src') || '').slice(0, 90);
+                  var doc = null;
+                  try { doc = frame.contentDocument; } catch (error) { doc = null; }
+                  if (!doc) {
+                    record.origin = 'cross-origin';
+                  } else {
+                    record.origin = 'same';
+                    record.stageMark = (doc.documentElement && doc.documentElement.dataset
+                      ? (doc.documentElement.dataset.homeosStage || '') : '');
+                    var frameWindow = frame.contentWindow;
+                    if (frameWindow) {
+                      record.frameViewport = frameWindow.innerWidth + 'x' + frameWindow.innerHeight;
+                      record.frameWebgl2 = probeGl(frameWindow);
+                    }
+                    var innerCanvas = doc.querySelector('#preview-3d canvas') || doc.querySelector('canvas');
+                    if (innerCanvas) {
+                      record.canvas = innerCanvas.width + 'x' + innerCanvas.height;
+                      record.canvasCss = Math.round(innerCanvas.clientWidth) + 'x' + Math.round(innerCanvas.clientHeight);
+                    }
+                    var hostStamp = doc.querySelector('.interaction3d-stage');
+                    record.stageShell = hostStamp ? 'yes' : 'no';
+                    record.bodyClass = doc.body ? (doc.body.className || '').slice(0, 60) : '';
+                  }
+                }
+                hosts.push(record);
               }
               return JSON.stringify({
                 visibility: document.visibilityState,
-                webgl2: probeGl('webgl2'),
-                webgl1: probeGl('webgl'),
+                webgl2: probeGl(window),
                 dpr: window.devicePixelRatio,
                 viewport: window.innerWidth + 'x' + window.innerHeight,
+                origin: window.location.origin,
                 iframes: document.querySelectorAll('iframe').length,
                 hosts: hosts
               });
@@ -331,11 +390,17 @@ class WebViewController(
         """.trimIndent()
         binding.webView.evaluateJavascript(script) { result ->
             if (isDestroying) return@evaluateJavascript
-            val raw = unquoteJsString(result ?: "")
-            android.util.Log.i("HomeOS3D", "渲染自检 webView=${webViewVersionLabel()} $raw")
-            if (!showToast) return@evaluateJavascript
-            val verdict = describeDiagnostics(raw)
-            presentDiagnostics(verdict)
+            // 自检本身绝不能把墙屏带崩：解析/拼串任何异常都只放弃这次上报。
+            runCatching {
+                val raw = unquoteJsString(result ?: "")
+                android.util.Log.i("HomeOS3D", "渲染自检 webView=${webViewVersionLabel()} $raw")
+                val verdict = describeDiagnostics(raw)
+                if (onlyOnProblem && verdict.startsWith(NORMAL_TEXT_PREFIX)) return@runCatching
+                if (silentWhenNoHost && verdict.startsWith(NO_HOST_PREFIX)) return@runCatching
+                if (showToast) presentDiagnostics(verdict)
+            }.onFailure {
+                android.util.Log.w("HomeOS3D", "自检上报失败", it)
+            }
         }
     }
 
@@ -358,10 +423,16 @@ class WebViewController(
      * Android 12 起 Toast 最多两行，长文案会被截断，现场排障必须能完整读到（并截图）。
      */
     private fun presentDiagnostics(verdict: String) {
+        val consoleTail = if (recentConsoleErrors.isEmpty()) {
+            ""
+        } else {
+            "\n\n最近 console 异常：" + recentConsoleErrors.takeLast(3)
+                .joinToString("\n") { "· $it" }
+        }
         runCatching {
             android.app.AlertDialog.Builder(activity)
                 .setTitle("3D 自检")
-                .setMessage("$verdict\n\nWebView：${webViewVersionLabel()}")
+                .setMessage("$verdict\n\nWebView：${webViewVersionLabel()}$consoleTail")
                 .setPositiveButton("知道了", null)
                 .show()
         }.onFailure {
@@ -372,50 +443,70 @@ class WebViewController(
     /**
      * 把自检 JSON 翻译成一句人能照做的话。
      *
-     * 判据顺序按「能不能靠用户自己解决」排：WebGL2 缺失和授权未通过是两类完全不同的处置，
-     * 先报前者；再看宿主有没有画布；最后才报尺寸类问题。
+     * 判据顺序按「能不能定位到责任层」排，每一档对应完全不同的处置：
+     * 跨源 → 舞台没落地 → WebGL2 缺失 → 授权未通过 → 画布尺寸。
      */
     private fun describeDiagnostics(rawResult: String?): String {
         val json = runCatching { org.json.JSONObject(rawResult ?: "") }.getOrNull()
             ?: return "3D 自检失败：拿不到页面状态。请把日志（HomeOS3D）发给开发者。"
         val webgl2 = json.optBoolean("webgl2", false)
-        val webgl1 = json.optBoolean("webgl1", false)
         val viewport = json.optString("viewport", "?")
         val dpr = json.optDouble("dpr", 1.0)
+        val pageOrigin = json.optString("origin", "?")
         val iframes = json.optInt("iframes", -1)
         val hosts = json.optJSONArray("hosts")
         val hostCount = hosts?.length() ?: 0
 
         if (hostCount == 0) {
-            return "3D 自检：页面里没有 3D 宿主（iframe=$iframes，视口=$viewport）。" +
-                "可能是仪表盘本身没有 3D 组件，或前端没加载完。"
+            return "页面里没有 3D 宿主（iframe=$iframes，视口=$viewport）。" +
+                "说明当前布局没有 3D 组件，或前端没加载完 —— 与 GPU 无关。"
         }
         val first = hosts!!.optJSONObject(0)
-        val canvas = first?.optString("canvas", "") ?: ""
-        val box = first?.optString("box", "") ?: ""
+        fun field(name: String, fallback: String = "无"): String =
+            (first?.optString(name, "") ?: "").ifEmpty { fallback }
+        val origin = field("origin")
+        val stageMark = (first?.optString("stageMark", "") ?: "")
+        val canvas = (first?.optString("canvas", "") ?: "")
+        val canvasCss = (first?.optString("canvasCss", "") ?: "")
+        val box = field("box")
+        val frameBox = field("frameBox")
+        val frameSrc = field("frameSrc")
+        val frameViewport = field("frameViewport")
         val access = first?.optString("access", "") ?: ""
-        val runtime = first?.optString("runtime", "") ?: ""
+        val text = field("text")
 
+        if (origin == "cross-origin") {
+            return "根因：3D 舞台与本页**跨源**（本页 origin=$pageOrigin，舞台 src=$frameSrc）。" +
+                "App 用局域网 IP 打开、舞台地址却来自 APP_BASE_URL 的公网域名，就是这种情况 —— " +
+                "此时 postMessage 会被来源校验丢弃，舞台永远拿不到配置，画面只剩空白。" +
+                "浏览器里两者同源所以正常。"
+        }
         if (!webgl2) {
-            return if (webgl1) {
-                "根因：当前 WebView 只支持 WebGL1，没有 WebGL2。" +
-                    "three.js 0.186 已弃用 WebGL1，所以 3D 一定空白。" +
-                    "手机浏览器用的是自带内核，所以那边正常。" +
-                    "请到应用商店更新「Android System WebView」或改用 Chrome 内核。"
-            } else {
-                "根因：当前 WebView 完全拿不到 WebGL 上下文。请检查系统「Android System WebView」是否需要更新。"
-            }
+            return "根因：主框架拿不到 WebGL2。请更新「Android System WebView」。"
+        }
+        if (first?.optBoolean("frameWebgl2", true) == false) {
+            return "根因：**舞台 iframe 内部**拿不到 WebGL2，而主框架可以。" +
+                "这是 WebView 对子框架的 GPU 限制（iframe=$frameSrc）。"
+        }
+        if (origin == "no-iframe") {
+            return "3D 宿主里没有 iframe（盒子=$box，文字=$text）。舞台根本没被创建。"
+        }
+        if (stageMark != "1") {
+            return "根因：舞台 iframe 里落的不是舞台文档（stageMark=\"$stageMark\"）。" +
+                "常见于后端热重载期间回 503/JSON —— 浏览器把那段 JSON 当页面渲染。" +
+                "舞台 src=$frameSrc"
         }
         if (access != "allowed") {
-            return "3D 宿主授权状态 = ${access.ifEmpty { "空" }}（应为 allowed）。" +
-                "这是授权接口 / 登录态问题，不是 GPU 问题。"
+            return "3D 宿主授权状态 = ${access.ifEmpty { "空" }}（应为 allowed），不是 GPU 问题。" +
+                "iframe=$frameBox，舞台内视口=$frameViewport"
         }
         if (canvas.isEmpty() || canvas.startsWith("0x")) {
-            return "3D 画布尺寸异常（canvas=$canvas，盒子=$box，runtime=$runtime）。" +
-                "WebGL 可用、授权通过，但画布没被撑开 —— 属于布局/尺寸问题。"
+            return "画布尺寸异常：canvas=$canvas（CSS $canvasCss），宿主盒子=$box，iframe=$frameBox，" +
+                "舞台内视口=$frameViewport，dpr=$dpr。" +
+                "WebGL 与授权都通过，但画布没被撑开 —— 布局/缩放问题。"
         }
-        return "3D 自检未发现异常（canvas=$canvas，盒子=$box，视口=$viewport，dpr=$dpr）。" +
-            "若画面仍空白，请截图这条信息。"
+        return NORMAL_TEXT_PREFIX + "（canvas=$canvas，CSS=$canvasCss，盒子=$box，" +
+            "iframe=$frameBox，舞台内视口=$frameViewport，dpr=$dpr，origin=$pageOrigin）"
     }
 
     /**
@@ -437,5 +528,16 @@ class WebViewController(
             uploadMessage?.onReceiveValue(null)
         }
         uploadMessage = null
+    }
+
+    companion object {
+        /**
+         * 自检结论里「一切正常」的前缀。
+         *
+         * 自动自检靠它判定是否需要打扰用户：只有异常才弹框。
+         */
+        private const val NORMAL_TEXT_PREFIX = "3D 自检未发现异常"
+        private const val NO_HOST_PREFIX = "页面里没有 3D 宿主"
+        private const val CONSOLE_BUFFER_SIZE = 20
     }
 }
