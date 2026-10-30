@@ -328,52 +328,69 @@ class WebViewController(
                   return true;
                 } catch (error) { return false; }
               }
+              // 舞台 iframe 与宿主同源，可以直接读它内部的挂载状态与启动期错误。
+              function readFrame(frame) {
+                var out = { origin: 'cross-origin' };
+                var doc = null;
+                try { doc = frame.contentDocument; } catch (error) { doc = null; }
+                if (!doc) return out;
+                out.origin = 'same';
+                var win = frame.contentWindow;
+                var root = doc.documentElement;
+                var preview = doc.querySelector('#preview-3d');
+                var messageElement = doc.querySelector('#webgl-message');
+                var canvas = doc.querySelector('#preview-3d canvas') || doc.querySelector('canvas');
+                out.ready = root && root.dataset ? (root.dataset.homeosReady || '') : '';
+                out.mounted = root && root.dataset ? (root.dataset.homeosMounted || '') : '';
+                out.bodyClass = doc.body ? (doc.body.className || '').slice(0, 40) : '';
+                out.appKids = doc.querySelector('#app') ? doc.querySelector('#app').children.length : -1;
+                out.hasPreview = preview ? 1 : 0;
+                out.previewKids = preview ? preview.children.length : -1;
+                out.shell = doc.querySelector('.studio-shell') ? 1 : 0;
+                out.canvases = doc.querySelectorAll('canvas').length;
+                out.canvas = canvas ? (canvas.width + 'x' + canvas.height) : '';
+                out.canvasCss = canvas
+                  ? (Math.round(canvas.clientWidth) + 'x' + Math.round(canvas.clientHeight)) : '';
+                out.msgHidden = messageElement ? String(messageElement.hidden) : '';
+                out.msgText = messageElement
+                  ? (messageElement.textContent || '').trim().slice(0, 40) : '';
+                var overlay = doc.querySelector('#homeos-boot-overlay');
+                out.overlay = overlay
+                  ? (overlay.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 70) : '';
+                if (win) {
+                  out.frameViewport = win.innerWidth + 'x' + win.innerHeight;
+                  out.frameWebgl2 = probeGl(win);
+                  out.wallProfile = String(win.__homeosWallRuntimeProfile || '');
+                  var recorded = win.__hosBootErrors;
+                  if (recorded && recorded.length) {
+                    out.bootErrors = [];
+                    for (var e = 0; e < recorded.length && e < 3; e++) out.bootErrors.push(recorded[e]);
+                  }
+                }
+                return out;
+              }
               var hosts = [];
               var nodes = document.querySelectorAll('.hb-interaction3d-host');
               for (var i = 0; i < nodes.length; i++) {
                 var host = nodes[i];
                 var rect = host.getBoundingClientRect();
                 var record = {
-                  access: host.dataset ? (host.dataset.access || '') : '',
-                  styleState: host.dataset ? (host.dataset.styleState || '') : '',
+                  hostClass: String(host.className || ''),
                   box: Math.round(rect.width) + 'x' + Math.round(rect.height),
-                  runtime: '',
-                  text: (host.textContent || '').trim().slice(0, 40),
-                  origin: 'no-iframe',
-                  stageMark: '',
-                  canvas: '',
-                  canvasCss: '',
-                  frameViewport: ''
+                  access: host.dataset ? (host.dataset.access || '') : '',
+                  loadingText: ''
                 };
                 var runtime = host.querySelector('.hb-interaction3d-runtime');
-                if (runtime) record.runtime = runtime.className;
+                if (runtime) record.runtimeClass = String(runtime.className || '');
+                var loading = host.querySelector('.i3d-loading');
+                if (loading) record.loadingText = (loading.textContent || '').trim().slice(0, 60);
                 var frame = host.querySelector('iframe');
                 if (frame) {
                   var frameRect = frame.getBoundingClientRect();
                   record.frameBox = Math.round(frameRect.width) + 'x' + Math.round(frameRect.height);
-                  record.frameSrc = String(frame.getAttribute('src') || '').slice(0, 90);
-                  var doc = null;
-                  try { doc = frame.contentDocument; } catch (error) { doc = null; }
-                  if (!doc) {
-                    record.origin = 'cross-origin';
-                  } else {
-                    record.origin = 'same';
-                    record.stageMark = (doc.documentElement && doc.documentElement.dataset
-                      ? (doc.documentElement.dataset.homeosStage || '') : '');
-                    var frameWindow = frame.contentWindow;
-                    if (frameWindow) {
-                      record.frameViewport = frameWindow.innerWidth + 'x' + frameWindow.innerHeight;
-                      record.frameWebgl2 = probeGl(frameWindow);
-                    }
-                    var innerCanvas = doc.querySelector('#preview-3d canvas') || doc.querySelector('canvas');
-                    if (innerCanvas) {
-                      record.canvas = innerCanvas.width + 'x' + innerCanvas.height;
-                      record.canvasCss = Math.round(innerCanvas.clientWidth) + 'x' + Math.round(innerCanvas.clientHeight);
-                    }
-                    var hostStamp = doc.querySelector('.interaction3d-stage');
-                    record.stageShell = hostStamp ? 'yes' : 'no';
-                    record.bodyClass = doc.body ? (doc.body.className || '').slice(0, 60) : '';
-                  }
+                  record.frameSrc = String(frame.getAttribute('src') || '').slice(0, 80);
+                  var inner = readFrame(frame);
+                  for (var key in inner) record[key] = inner[key];
                 }
                 hosts.push(record);
               }
@@ -443,70 +460,71 @@ class WebViewController(
     /**
      * 把自检 JSON 翻译成一句人能照做的话。
      *
-     * 判据顺序按「能不能定位到责任层」排，每一档对应完全不同的处置：
-     * 跨源 → 舞台没落地 → WebGL2 缺失 → 授权未通过 → 画布尺寸。
+     * 判据顺序按「谁能负责」排：先把前端真实异常抛出来的地方查完（bootErrors → 挂载 →
+     * 渲染器），最后才轮到尺寸类问题 —— 若无 canvas，那从来不是「布局问题」。
      */
     private fun describeDiagnostics(rawResult: String?): String {
         val json = runCatching { org.json.JSONObject(rawResult ?: "") }.getOrNull()
             ?: return "3D 自检失败：拿不到页面状态。请把日志（HomeOS3D）发给开发者。"
-        val webgl2 = json.optBoolean("webgl2", false)
-        val viewport = json.optString("viewport", "?")
-        val dpr = json.optDouble("dpr", 1.0)
-        val pageOrigin = json.optString("origin", "?")
-        val iframes = json.optInt("iframes", -1)
         val hosts = json.optJSONArray("hosts")
         val hostCount = hosts?.length() ?: 0
-
         if (hostCount == 0) {
-            return "页面里没有 3D 宿主（iframe=$iframes，视口=$viewport）。" +
-                "说明当前布局没有 3D 组件，或前端没加载完 —— 与 GPU 无关。"
+            return NO_HOST_PREFIX + "（iframe=${json.optInt("iframes", -1)}，" +
+                "视口=${json.optString("viewport", "?")}）。与 GPU 无关。"
         }
-        val first = hosts!!.optJSONObject(0)
+        val host = hosts!!.optJSONObject(0)!!
         fun field(name: String, fallback: String = "无"): String =
-            (first?.optString(name, "") ?: "").ifEmpty { fallback }
-        val origin = field("origin")
-        val stageMark = (first?.optString("stageMark", "") ?: "")
-        val canvas = (first?.optString("canvas", "") ?: "")
-        val canvasCss = (first?.optString("canvasCss", "") ?: "")
-        val box = field("box")
-        val frameBox = field("frameBox")
-        val frameSrc = field("frameSrc")
-        val frameViewport = field("frameViewport")
-        val access = first?.optString("access", "") ?: ""
-        val text = field("text")
+            (host.optString(name, "") ?: "").ifEmpty { fallback }
 
-        if (origin == "cross-origin") {
-            return "根因：3D 舞台与本页**跨源**（本页 origin=$pageOrigin，舞台 src=$frameSrc）。" +
-                "App 用局域网 IP 打开、舞台地址却来自 APP_BASE_URL 的公网域名，就是这种情况 —— " +
-                "此时 postMessage 会被来源校验丢弃，舞台永远拿不到配置，画面只剩空白。" +
-                "浏览器里两者同源所以正常。"
+        val frameBox = field("frameBox")
+        val frameViewport = field("frameViewport")
+        val dpr = json.optDouble("dpr", 1.0)
+        val dataLine = "宿主=${
+            field("box")
+        }，iframe=$frameBox，舞台内视口=$frameViewport，dpr=$dpr，" +
+            "宿主class=${field("hostClass")}"
+
+        // ① 前端自己记录下来的最早错误 —— 唯一能直接指出根因的证据。
+        val bootErrors = host.optJSONArray("bootErrors")
+        if (bootErrors != null && bootErrors.length() > 0) {
+            val parts = StringBuilder()
+            for (i in 0 until minOf(bootErrors.length(), 3)) {
+                val item = bootErrors.optJSONObject(i) ?: continue
+                if (parts.isNotEmpty()) parts.append("\n")
+                parts.append("[${
+                    item.optString("kind", "?")
+                }] ${item.optString("detail", "")} ${item.optString("extra", "")}".trim())
+            }
+            return "根因：舞台页面启动期报错 ——\n$parts"
         }
-        if (!webgl2) {
-            return "根因：主框架拿不到 WebGL2。请更新「Android System WebView」。"
+        if (field("origin") == "cross-origin") {
+            return "根因：舞台与本页跨源（stage src=${field("frameSrc")}），" +
+                "postMessage 会被来源校验丢弃。"
         }
-        if (first?.optBoolean("frameWebgl2", true) == false) {
-            return "根因：**舞台 iframe 内部**拿不到 WebGL2，而主框架可以。" +
-                "这是 WebView 对子框架的 GPU 限制（iframe=$frameSrc）。"
+        // ② Vue 都没挂上：说明舞台里的 JS 没跑起来（模块加载失败 / 求值期抛错）。
+        if (host.optInt("hasPreview", 0) == 0) {
+            return "根因：舞台页面没有渲染 StudioView —— #preview-3d 不存在。" +
+                "说明 iframe 里的前端没有挂载。\n" +
+                "ready=${field("ready")}，mounted=${field("mounted")}，" +
+                "#app 子节点=${host.optInt("appKids", -1)}，studio-shell=${host.optInt("shell", -1)}，" +
+                "启动遮罩=\"${field("overlay")}\"，body.class=${field("bodyClass")}\n$dataLine"
         }
-        if (origin == "no-iframe") {
-            return "3D 宿主里没有 iframe（盒子=$box，文字=$text）。舞台根本没被创建。"
+        // ③ 挂载了但没有 canvas：渲染器从未构造成功（WebGL2 在 iframe 内可用时尤其可疑）。
+        if (host.optInt("canvases", 0) == 0) {
+            return "根因：StudioView 已挂载，但**整个舞台里没有任何 canvas** —— " +
+                "3D 渲染器没构造成功。\n" +
+                "舞台内 WebGL2=${host.optBoolean("frameWebgl2", false)}，" +
+                "#webgl-message hidden=${field("msgHidden")}（\"无\" = 元素不存在），" +
+                "wallProfile=\"${field("wallProfile")}\"，ready=${field("ready")}，" +
+                "loading=\"${field("loadingText", "")}\"\n$dataLine"
         }
-        if (stageMark != "1") {
-            return "根因：舞台 iframe 里落的不是舞台文档（stageMark=\"$stageMark\"）。" +
-                "常见于后端热重载期间回 503/JSON —— 浏览器把那段 JSON 当页面渲染。" +
-                "舞台 src=$frameSrc"
+        val canvas = field("canvas")
+        val canvasCss = field("canvasCss")
+        if (canvas.startsWith("0x") || canvasCss.startsWith("0x")) {
+            return "canvas 已创建但尺寸为 0：canvas=$canvas（CSS $canvasCss）。属于尺寸/可见性问题。\n" +
+                dataLine
         }
-        if (access != "allowed") {
-            return "3D 宿主授权状态 = ${access.ifEmpty { "空" }}（应为 allowed），不是 GPU 问题。" +
-                "iframe=$frameBox，舞台内视口=$frameViewport"
-        }
-        if (canvas.isEmpty() || canvas.startsWith("0x")) {
-            return "画布尺寸异常：canvas=$canvas（CSS $canvasCss），宿主盒子=$box，iframe=$frameBox，" +
-                "舞台内视口=$frameViewport，dpr=$dpr。" +
-                "WebGL 与授权都通过，但画布没被撑开 —— 布局/缩放问题。"
-        }
-        return NORMAL_TEXT_PREFIX + "（canvas=$canvas，CSS=$canvasCss，盒子=$box，" +
-            "iframe=$frameBox，舞台内视口=$frameViewport，dpr=$dpr，origin=$pageOrigin）"
+        return NORMAL_TEXT_PREFIX + "（canvas=$canvas，CSS=$canvasCss，$dataLine）"
     }
 
     /**
