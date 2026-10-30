@@ -278,11 +278,17 @@ class WebViewController(
         if (view == null) return
         mainHandler.postDelayed({
             if (isDestroying) return@postDelayed
-            logRenderDiagnostics(view)
+            runRenderDiagnostics(showToast = false)
         }, 4000L)
     }
 
-    private fun logRenderDiagnostics(view: WebView) {
+    /**
+     * 主动跑一次 3D 自检并把结论弹成 Toast。
+     *
+     * release 包无法用 `chrome://inspect` 调试，真机现场也常常拿不到 adb；入口挂在
+     * 三指三连击打开的设置面板上，用户点开就能用肉眼把结论读出来（截图即可反馈）。
+     */
+    fun runRenderDiagnostics(showToast: Boolean = true) {
         if (isDestroying) return
         val script = """
             (function () {
@@ -323,9 +329,103 @@ class WebViewController(
               });
             })();
         """.trimIndent()
-        view.evaluateJavascript(script) { result ->
-            android.util.Log.i("HomeOS3D", "渲染自检 $result")
+        binding.webView.evaluateJavascript(script) { result ->
+            if (isDestroying) return@evaluateJavascript
+            val raw = unquoteJsString(result ?: "")
+            android.util.Log.i("HomeOS3D", "渲染自检 webView=${webViewVersionLabel()} $raw")
+            if (!showToast) return@evaluateJavascript
+            val verdict = describeDiagnostics(raw)
+            presentDiagnostics(verdict)
         }
+    }
+
+    /**
+     * 当前 WebView 实现包与版本号。
+     *
+     * App 把 UA 伪装成桌面 Chrome，页面里 `navigator.userAgent` 完全看不出真实内核版本；
+     * 而「系统 WebView 太旧、只支持 WebGL1」正是浏览器正常、App 空白的最常见原因。
+     * 这里直接取系统组件版本，作为唯一可信的判据。
+     */
+    private fun webViewVersionLabel(): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return "WebView(<8.0)"
+        val pkg = runCatching { WebView.getCurrentWebViewPackage() }.getOrNull()
+        return if (pkg == null) "WebView(未知)" else "${pkg.packageName}@${pkg.versionName}"
+    }
+
+    /**
+     * 自检结论用对话框展示。
+     *
+     * Android 12 起 Toast 最多两行，长文案会被截断，现场排障必须能完整读到（并截图）。
+     */
+    private fun presentDiagnostics(verdict: String) {
+        runCatching {
+            android.app.AlertDialog.Builder(activity)
+                .setTitle("3D 自检")
+                .setMessage("$verdict\n\nWebView：${webViewVersionLabel()}")
+                .setPositiveButton("知道了", null)
+                .show()
+        }.onFailure {
+            android.widget.Toast.makeText(activity, verdict, android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * 把自检 JSON 翻译成一句人能照做的话。
+     *
+     * 判据顺序按「能不能靠用户自己解决」排：WebGL2 缺失和授权未通过是两类完全不同的处置，
+     * 先报前者；再看宿主有没有画布；最后才报尺寸类问题。
+     */
+    private fun describeDiagnostics(rawResult: String?): String {
+        val json = runCatching { org.json.JSONObject(rawResult ?: "") }.getOrNull()
+            ?: return "3D 自检失败：拿不到页面状态。请把日志（HomeOS3D）发给开发者。"
+        val webgl2 = json.optBoolean("webgl2", false)
+        val webgl1 = json.optBoolean("webgl1", false)
+        val viewport = json.optString("viewport", "?")
+        val dpr = json.optDouble("dpr", 1.0)
+        val iframes = json.optInt("iframes", -1)
+        val hosts = json.optJSONArray("hosts")
+        val hostCount = hosts?.length() ?: 0
+
+        if (hostCount == 0) {
+            return "3D 自检：页面里没有 3D 宿主（iframe=$iframes，视口=$viewport）。" +
+                "可能是仪表盘本身没有 3D 组件，或前端没加载完。"
+        }
+        val first = hosts!!.optJSONObject(0)
+        val canvas = first?.optString("canvas", "") ?: ""
+        val box = first?.optString("box", "") ?: ""
+        val access = first?.optString("access", "") ?: ""
+        val runtime = first?.optString("runtime", "") ?: ""
+
+        if (!webgl2) {
+            return if (webgl1) {
+                "根因：当前 WebView 只支持 WebGL1，没有 WebGL2。" +
+                    "three.js 0.186 已弃用 WebGL1，所以 3D 一定空白。" +
+                    "手机浏览器用的是自带内核，所以那边正常。" +
+                    "请到应用商店更新「Android System WebView」或改用 Chrome 内核。"
+            } else {
+                "根因：当前 WebView 完全拿不到 WebGL 上下文。请检查系统「Android System WebView」是否需要更新。"
+            }
+        }
+        if (access != "allowed") {
+            return "3D 宿主授权状态 = ${access.ifEmpty { "空" }}（应为 allowed）。" +
+                "这是授权接口 / 登录态问题，不是 GPU 问题。"
+        }
+        if (canvas.isEmpty() || canvas.startsWith("0x")) {
+            return "3D 画布尺寸异常（canvas=$canvas，盒子=$box，runtime=$runtime）。" +
+                "WebGL 可用、授权通过，但画布没被撑开 —— 属于布局/尺寸问题。"
+        }
+        return "3D 自检未发现异常（canvas=$canvas，盒子=$box，视口=$viewport，dpr=$dpr）。" +
+            "若画面仍空白，请截图这条信息。"
+    }
+
+    /**
+     * `evaluateJavascript` 回传的是 JSON 字符串字面量（带引号与转义），先还原成原始文本。
+     */
+    private fun unquoteJsString(raw: String): String {
+        val trimmed = raw.trim()
+        return runCatching {
+            org.json.JSONTokener(trimmed).nextValue() as? String ?: trimmed
+        }.getOrDefault(trimmed)
     }
 
     fun handleFileChooserResult(resultCode: Int, data: Intent?) {
