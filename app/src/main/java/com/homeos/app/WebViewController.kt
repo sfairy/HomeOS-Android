@@ -3,8 +3,10 @@ package com.homeos.app
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
+import android.webkit.ConsoleMessage
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -29,6 +31,7 @@ class WebViewController(
     private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
     private var nativeBridge: NativeBridge? = null
     private var isDestroying = false
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     val webView: WebView get() = binding.webView
 
@@ -65,6 +68,12 @@ class WebViewController(
         binding.webView.isFocusable = true
         binding.webView.isFocusableInTouchMode = true
 
+        // 可调试包打开远程调试：真机 3D 空白时可用 chrome://inspect 直接看页面 console /
+        // 网络请求 / WebGL 上下文，不必再靠猜。Release 包不受影响。
+        if ((activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+
         nativeBridge = NativeBridge(activity, host)
         binding.webView.addJavascriptInterface(nativeBridge!!, "Native")
 
@@ -94,6 +103,24 @@ class WebViewController(
                     false
                 }
             }
+
+            /**
+             * 页面 console 落到 logcat（tag: HomeOSWebView）。
+             * 3D 舞台内部的前端报错都走 console.error，真机上看不到日志时这条是唯一线索。
+             */
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                consoleMessage ?: return false
+                val detail = "${consoleMessage.message()} " +
+                    "(${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})"
+                when (consoleMessage.messageLevel()) {
+                    ConsoleMessage.MessageLevel.ERROR ->
+                        android.util.Log.e("HomeOSWebView", detail)
+                    ConsoleMessage.MessageLevel.WARNING ->
+                        android.util.Log.w("HomeOSWebView", detail)
+                    else -> android.util.Log.i("HomeOSWebView", detail)
+                }
+                return true
+            }
         }
 
         binding.webView.webViewClient = object : WebViewClient() {
@@ -101,6 +128,7 @@ class WebViewController(
                 super.onPageFinished(view, url)
                 injectInputFocusStabilizer(view)
                 onPageReady()
+                scheduleRenderDiagnostics(view)
             }
 
             override fun onReceivedError(
@@ -173,6 +201,7 @@ class WebViewController(
 
     fun destroy() {
         isDestroying = true
+        mainHandler.removeCallbacksAndMessages(null)
         binding.webView.apply {
             stopLoading()
             removeJavascriptInterface("Native")
@@ -234,6 +263,69 @@ class WebViewController(
             })();
         """.trimIndent()
         view.evaluateJavascript(script, null)
+    }
+
+    /**
+     * 页面就绪后做一次 3D 渲染自检（logcat tag: HomeOS3D）。
+     *
+     * Android WebView 里「3D 区域整块空白、周边 UI 正常」有几种完全不同的成因：
+     * 1) 设备/WebView 没有 WebGL2 → 前端 three.js 建不出 renderer；
+     * 2) 3D 宿主停在「授权校验中 / 连接中断」→ 前端只渲染一个空占位层（无任何文字）；
+     * 3) 舞台 iframe 里的 canvas 尺寸为 0 或被裁掉 → 画了也看不见。
+     * 这里把这三类证据一次性打出来，真机日志即可定位，不用再靠猜。
+     */
+    private fun scheduleRenderDiagnostics(view: WebView?) {
+        if (view == null) return
+        mainHandler.postDelayed({
+            if (isDestroying) return@postDelayed
+            logRenderDiagnostics(view)
+        }, 4000L)
+    }
+
+    private fun logRenderDiagnostics(view: WebView) {
+        if (isDestroying) return
+        val script = """
+            (function () {
+              function probeGl(name) {
+                try {
+                  var canvas = document.createElement('canvas');
+                  var gl = canvas.getContext(name);
+                  if (!gl) return false;
+                  var lose = gl.getExtension('WEBGL_lose_context');
+                  lose && lose.loseContext();
+                  return true;
+                } catch (error) { return false; }
+              }
+              var hosts = [];
+              var nodes = document.querySelectorAll('.hb-interaction3d-host');
+              for (var i = 0; i < nodes.length; i++) {
+                var host = nodes[i];
+                var rect = host.getBoundingClientRect();
+                var canvas = host.querySelector('canvas');
+                var runtime = host.querySelector('.hb-interaction3d-runtime');
+                hosts.push({
+                  access: host.dataset ? (host.dataset.access || '') : '',
+                  styleState: host.dataset ? (host.dataset.styleState || '') : '',
+                  runtime: runtime ? runtime.className : '',
+                  canvas: canvas ? (canvas.width + 'x' + canvas.height) : '',
+                  box: Math.round(rect.width) + 'x' + Math.round(rect.height),
+                  text: (host.textContent || '').slice(0, 60)
+                });
+              }
+              return JSON.stringify({
+                visibility: document.visibilityState,
+                webgl2: probeGl('webgl2'),
+                webgl1: probeGl('webgl'),
+                dpr: window.devicePixelRatio,
+                viewport: window.innerWidth + 'x' + window.innerHeight,
+                iframes: document.querySelectorAll('iframe').length,
+                hosts: hosts
+              });
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { result ->
+            android.util.Log.i("HomeOS3D", "渲染自检 $result")
+        }
     }
 
     fun handleFileChooserResult(resultCode: Int, data: Intent?) {

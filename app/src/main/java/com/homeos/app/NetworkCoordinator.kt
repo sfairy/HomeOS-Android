@@ -52,7 +52,12 @@ class NetworkCoordinator(
         onResumeBackgroundPolling()
         recoveryBackoffMs = INITIAL_RECOVERY_DELAY_MS
 
-        binding.webView.visibility = View.INVISIBLE
+        // 加载期间不要把 WebView 设成 INVISIBLE，只用不透明的 loadingOverlay 盖住它：
+        // Android WebView 在 View 不可见时不会为页面建立合成器表面，页面里的 WebGL
+        // （总览的 3D 户型舞台 iframe）会拿不到可用的 GL 上下文、或上下文刚建好就被丢弃，
+        // 之后即使再设为 VISIBLE 也只剩一块空白画布 —— 而普通 DOM 界面照常显示，
+        // 于是表现为「只有安卓 App 里 3D 不出来、周边 UI 都正常」。
+        binding.webView.visibility = View.VISIBLE
         binding.loadingOverlay.visibility = View.VISIBLE
         binding.loadingOverlay.alpha = 1f
         binding.loadingText.text = getString(R.string.connecting)
