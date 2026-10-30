@@ -68,3 +68,8 @@ Thumbs.db
 ota/
 *.zip
 *.bin
+
+# GraphFlow 本地工具缓存（与 HomeOS-3D 的 .gitignore 保持一致）
+.graphflow/
+.graphflow-cache/
+graphflow-out/
